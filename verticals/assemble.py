@@ -54,7 +54,7 @@ def assemble_video(
     ])
 
     # Build the final ffmpeg command with optional captions + music
-    out_path = MEDIA_DIR / f"pipeline_{job_id}_{lang}.mp4"
+    out_path = MEDIA_DIR / f"verticals_{job_id}_{lang}.mp4"
 
     # Determine video filter (captions via ASS)
     vf_parts = []

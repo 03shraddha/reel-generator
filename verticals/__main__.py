@@ -1,4 +1,4 @@
-"""CLI entry point — python -m pipeline."""
+"""CLI entry point — python -m verticals."""
 
 import argparse
 import sys
@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .config import CONFIG_FILE, DRAFTS_DIR, MEDIA_DIR, run_setup
 from .log import log, set_verbose
+from .niche import list_niches
 
 
 def cmd_draft(args):
@@ -19,8 +20,16 @@ def cmd_draft(args):
 
     niche = getattr(args, "niche", "general") or "general"
     platform = getattr(args, "platform", "shorts") or "shorts"
+    provider = getattr(args, "provider", None)
+
     print(f"\n  Drafting: {args.news} [niche: {niche}, platform: {platform}]\n")
-    draft = generate_draft(args.news, getattr(args, "context", ""), niche=niche, platform=platform)
+    draft = generate_draft(
+        args.news,
+        getattr(args, "context", ""),
+        niche=niche,
+        platform=platform,
+        provider=provider,
+    )
     draft["job_id"] = job_id
 
     out_path = DRAFTS_DIR / f"{job_id}.json"
@@ -41,10 +50,11 @@ def cmd_draft(args):
 
 def cmd_produce(args):
     from .broll import generate_broll
-    from .voiceover import generate_voiceover
+    from .tts import generate_voiceover
     from .captions import generate_captions
     from .music import select_and_prepare_music
     from .assemble import assemble_video
+    from .niche import load_niche, get_voice_config, get_caption_config, get_music_config
     from .state import PipelineState
     import json
     import shutil
@@ -55,16 +65,21 @@ def cmd_produce(args):
     lang = args.lang
     state = PipelineState(draft)
 
+    # Load niche profile for voice/caption/music config
+    niche_name = draft.get("niche", "general")
+    profile = load_niche(niche_name)
+
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     work_dir = MEDIA_DIR / f"work_{job_id}_{lang}"
     work_dir.mkdir(exist_ok=True)
 
     force = getattr(args, "force", False)
+    tts_provider = getattr(args, "voice", None)
     script = getattr(args, "script", None) or (
         draft.get("script_hi") if lang == "hi" else draft.get("script")
     )
 
-    print(f"\n  Producing {lang.upper()} video for job {job_id}")
+    print(f"\n  Producing {lang.upper()} video for job {job_id} [niche: {niche_name}]")
 
     # B-roll
     if force or not state.is_done("broll"):
@@ -74,17 +89,31 @@ def cmd_produce(args):
         log("Skipping b-roll (already done)")
         frames = [Path(f) for f in state.get_artifact("broll", "frames", [])]
 
-    # Voiceover
+    # Voiceover (niche-aware voice selection)
     if force or not state.is_done("voiceover"):
-        vo_path = generate_voiceover(script, work_dir, lang)
+        voice_config = get_voice_config(
+            profile,
+            provider=tts_provider or "edge_tts",
+            lang=lang,
+        )
+        vo_path = generate_voiceover(
+            script, work_dir, lang,
+            provider=tts_provider,
+            voice_config=voice_config,
+        )
         state.complete_stage("voiceover", {"path": str(vo_path)})
     else:
         log("Skipping voiceover (already done)")
         vo_path = Path(state.get_artifact("voiceover", "path"))
 
-    # Whisper + Captions
+    # Whisper + Captions (niche-aware styling)
+    caption_config = get_caption_config(profile)
     if force or not state.is_done("captions"):
-        captions_result = generate_captions(vo_path, work_dir, lang)
+        captions_result = generate_captions(
+            vo_path, work_dir, lang,
+            highlight_color=caption_config.get("highlight_color", "#FFFF00"),
+            words_per_group=caption_config.get("words_per_group", 4),
+        )
         state.complete_stage("captions", {
             "srt_path": str(captions_result.get("srt_path", "")),
             "ass_path": str(captions_result.get("ass_path", "")),
@@ -96,9 +125,14 @@ def cmd_produce(args):
             "ass_path": state.get_artifact("captions", "ass_path", ""),
         }
 
-    # Music
+    # Music (niche-aware mood/ducking)
+    music_config = get_music_config(profile)
     if force or not state.is_done("music"):
-        music_result = select_and_prepare_music(vo_path, work_dir)
+        music_result = select_and_prepare_music(
+            vo_path, work_dir,
+            duck_speech=music_config.get("duck_volume_speech", 0.12),
+            duck_gap=music_config.get("duck_volume_gap", 0.25),
+        )
         state.complete_stage("music", {
             "track_path": str(music_result.get("track_path", "")),
             "duck_filter": music_result.get("duck_filter", ""),
@@ -130,7 +164,7 @@ def cmd_produce(args):
     # Save SRT to media dir
     srt_path = captions_result.get("srt_path")
     if srt_path and Path(srt_path).exists():
-        final_srt = MEDIA_DIR / f"pipeline_{job_id}_{lang}.srt"
+        final_srt = MEDIA_DIR / f"verticals_{job_id}_{lang}.srt"
         shutil.copy(srt_path, final_srt)
         draft[f"srt_{lang}"] = str(final_srt)
 
@@ -194,12 +228,12 @@ def cmd_run(args):
         print("  Dry run — skipping produce + upload")
         return
 
-    # Monkey-patch args for produce/upload
     class ProduceArgs:
         draft = str(draft_path)
         lang = args.lang
         script = None
         force = False
+        voice = getattr(args, "voice", None)
 
     video_path = cmd_produce(ProduceArgs())
 
@@ -223,12 +257,26 @@ def cmd_topics(args):
         print("  No topics found from enabled sources.")
         return
 
-    print(f"\n  Trending topics ({len(candidates)} found):\n")
+    print(f"\n  Trending topics for [{niche}] ({len(candidates)} found):\n")
     for i, topic in enumerate(candidates, 1):
         score = f" [{topic.trending_score:.2f}]" if topic.trending_score else ""
         print(f"  {i:2d}. [{topic.source}] {topic.title}{score}")
         if topic.summary:
             print(f"      {topic.summary[:100]}")
+
+
+def cmd_niches(args):
+    """List all available niche profiles."""
+    niches = list_niches()
+    print(f"\n  Available niches ({len(niches)}):\n")
+    for n in niches:
+        from .niche import load_niche
+        profile = load_niche(n)
+        display = profile.get("display_name", n)
+        desc = profile.get("description", "")[:80]
+        print(f"    {n:20s}  {display}")
+        if desc:
+            print(f"    {' ':20s}  {desc}")
 
 
 def main():
@@ -237,50 +285,62 @@ def main():
         run_setup()
 
     parser = argparse.ArgumentParser(
-        description="YouTube Shorts Pipeline v3 — AI-Native Content Engine",
+        description="Verticals v3 — AI-Native Vertical Video Engine",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Docs: https://github.com/rushindrasinha/verticals\n"
+               "Product: https://verticals.gg",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
     sub = parser.add_subparsers(dest="cmd")
+
+    # Shared niche/provider args
+    niche_help = f"Content niche ({', '.join(list_niches()[:8])}...)"
 
     # draft
     p_draft = sub.add_parser("draft", help="Generate script + metadata")
     p_draft.add_argument("--news", required=False, help="Topic/news headline")
     p_draft.add_argument("--context", default="", help="Channel context")
-    p_draft.add_argument("--niche", default="general", help="Content niche (gaming, finance, fitness, tech, food, travel, general)")
-    p_draft.add_argument("--platform", default="shorts", choices=["shorts", "reels", "tiktok", "all"], help="Target platform")
-    p_draft.add_argument("--discover", action="store_true", help="Use topic engine instead of --news")
-    p_draft.add_argument("--auto-pick", action="store_true", help="Let Claude pick the best topic")
-    p_draft.add_argument("--dry-run", action="store_true", help="Draft only, skip produce")
+    p_draft.add_argument("--niche", default="general", help=niche_help)
+    p_draft.add_argument("--platform", default="shorts", choices=["shorts", "reels", "tiktok", "all"])
+    p_draft.add_argument("--provider", default=None, help="LLM: claude, gemini, openai, ollama")
+    p_draft.add_argument("--discover", action="store_true", help="Use topic engine")
+    p_draft.add_argument("--auto-pick", action="store_true", help="Let LLM pick the best topic")
+    p_draft.add_argument("--dry-run", action="store_true", help="Draft only")
 
     # produce
     p_produce = sub.add_parser("produce", help="Generate video from draft")
     p_produce.add_argument("--draft", required=True)
-    p_produce.add_argument("--lang", default="en", choices=["en", "hi"])
+    p_produce.add_argument("--lang", default="en", choices=["en", "hi", "es", "pt", "de", "fr", "ja", "ko"])
+    p_produce.add_argument("--voice", default=None, help="TTS: edge, elevenlabs, say")
     p_produce.add_argument("--script", default=None, help="Override script text")
     p_produce.add_argument("--force", action="store_true", help="Redo all stages")
 
     # upload
     p_upload = sub.add_parser("upload", help="Upload to YouTube")
     p_upload.add_argument("--draft", required=True)
-    p_upload.add_argument("--lang", default="en", choices=["en", "hi"])
+    p_upload.add_argument("--lang", default="en", choices=["en", "hi", "es", "pt", "de", "fr", "ja", "ko"])
     p_upload.add_argument("--force", action="store_true", help="Re-upload even if done")
 
     # run (full pipeline)
     p_run = sub.add_parser("run", help="Full pipeline: draft -> produce -> upload")
     p_run.add_argument("--news", required=False, help="Topic/news headline")
-    p_run.add_argument("--lang", default="en", choices=["en", "hi"])
+    p_run.add_argument("--niche", default="general", help=niche_help)
+    p_run.add_argument("--platform", default="shorts", choices=["shorts", "reels", "tiktok", "all"])
+    p_run.add_argument("--provider", default=None, help="LLM: claude, gemini, openai, ollama")
+    p_run.add_argument("--voice", default=None, help="TTS: edge, elevenlabs, say")
+    p_run.add_argument("--lang", default="en", choices=["en", "hi", "es", "pt", "de", "fr", "ja", "ko"])
     p_run.add_argument("--dry-run", action="store_true")
     p_run.add_argument("--context", default="")
-    p_run.add_argument("--niche", default="general", help="Content niche (gaming, finance, fitness, tech, food, travel, general)")
-    p_run.add_argument("--platform", default="shorts", choices=["shorts", "reels", "tiktok", "all"], help="Target platform")
     p_run.add_argument("--discover", action="store_true")
     p_run.add_argument("--auto-pick", action="store_true")
 
     # topics
     p_topics = sub.add_parser("topics", help="Discover trending topics")
+    p_topics.add_argument("--niche", default="general", help=niche_help)
     p_topics.add_argument("--limit", type=int, default=15, help="Max topics to show")
-    p_topics.add_argument("--niche", default="general", help="Content niche to filter topics (gaming, finance, fitness, tech, food, travel, general)")
+
+    # niches
+    sub.add_parser("niches", help="List available niche profiles")
 
     args = parser.parse_args()
 
@@ -291,10 +351,16 @@ def main():
         parser.print_help()
         return
 
+    # Handle niches command
+    if args.cmd == "niches":
+        cmd_niches(args)
+        return
+
     # Handle --discover flag for draft/run
     if args.cmd in ("draft", "run") and getattr(args, "discover", False):
         from .topics import TopicEngine
-        engine = TopicEngine(niche=getattr(args, "niche", "general") or "general")
+        niche = getattr(args, "niche", "general") or "general"
+        engine = TopicEngine(niche=niche)
         candidates = engine.discover(limit=15)
         if not candidates:
             print("  No trending topics found. Use --news instead.")

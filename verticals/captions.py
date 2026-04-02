@@ -51,7 +51,6 @@ def _whisper_word_timestamps(audio_path: Path, lang: str = "en") -> list[dict]:
 
 
 def _group_words(words: list[dict], group_size: int = 4) -> list[list[dict]]:
-    """Group words into chunks of group_size for caption display."""
     groups = []
     for i in range(0, len(words), group_size):
         groups.append(words[i:i + group_size])
@@ -67,7 +66,7 @@ def _format_ass_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def _generate_ass(words: list[dict], output_path: Path, video_width: int = 1080, video_height: int = 1920):
+def _generate_ass(words: list[dict], output_path: Path, video_width: int = 1080, video_height: int = 1920, highlight_color: str = "#FFFF00", group_size: int = 4):
     """Generate ASS subtitle file with word-by-word color highlighting.
 
     White text for inactive words, yellow for current word.
@@ -90,7 +89,14 @@ Style: Default,Arial,72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-    groups = _group_words(words)
+    # Convert hex color to ASS BGR format (e.g. #00FF88 -> 88FF00)
+    hc = highlight_color.lstrip("#")
+    if len(hc) == 6:
+        ass_highlight = f"&H00{hc[4:6]}{hc[2:4]}{hc[0:2]}&"
+    else:
+        ass_highlight = "&H0000FFFF&"  # fallback yellow
+
+    groups = _group_words(words, group_size=group_size)
     events = []
 
     for group in groups:
@@ -105,12 +111,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             start = active_word["start"]
             end = active_word["end"]
 
-            # Build text with override tags: yellow for active, white for rest
+            # Build text with override tags: highlight color for active, white for rest
             parts = []
             for j, w in enumerate(group):
                 if j == active_idx:
-                    # Yellow, bold, slightly larger
-                    parts.append(f"{{\\c&H00FFFF&\\b1\\fs80}}{w['word']}{{\\r}}")
+                    parts.append(f"{{\\c{ass_highlight}\\b1\\fs80}}{w['word']}{{\\r}}")
                 else:
                     parts.append(w["word"])
 
@@ -124,9 +129,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return output_path
 
 
-def _generate_srt(words: list[dict], output_path: Path) -> Path:
+def _generate_srt(words: list[dict], output_path: Path, group_size: int = 4) -> Path:
     """Generate standard SRT file from word timestamps."""
-    groups = _group_words(words)
+    groups = _group_words(words, group_size=group_size)
     lines = []
 
     for i, group in enumerate(groups, 1):
@@ -154,7 +159,13 @@ def _srt_time(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def generate_captions(audio_path: Path, work_dir: Path, lang: str = "en") -> dict:
+def generate_captions(
+    audio_path: Path,
+    work_dir: Path,
+    lang: str = "en",
+    highlight_color: str = "#FFFF00",
+    words_per_group: int = 4,
+) -> dict:
     """Generate captions: ASS (for burn-in) + SRT (for YouTube upload).
 
     Returns dict with keys: srt_path, ass_path, words (for music ducking).
@@ -187,12 +198,12 @@ def generate_captions(audio_path: Path, work_dir: Path, lang: str = "en") -> dic
 
     # Generate SRT
     srt_path = work_dir / f"captions_{lang}.srt"
-    _generate_srt(words, srt_path)
+    _generate_srt(words, srt_path, group_size=words_per_group)
     result["srt_path"] = str(srt_path)
 
-    # Generate ASS for burn-in
+    # Generate ASS for burn-in (niche-aware highlight color)
     ass_path = work_dir / f"captions_{lang}.ass"
-    _generate_ass(words, ass_path)
+    _generate_ass(words, ass_path, highlight_color=highlight_color, group_size=words_per_group)
     result["ass_path"] = str(ass_path)
 
     return result

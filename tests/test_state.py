@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from pipeline.state import PipelineState, STAGES
+from verticals.state import PipelineState, STAGES
 
 
 class TestPipelineState:

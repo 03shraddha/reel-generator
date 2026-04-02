@@ -2,9 +2,9 @@
 
 from unittest.mock import patch, MagicMock
 
-from pipeline.topics.base import TopicCandidate, TopicSource
-from pipeline.topics.manual import ManualSource
-from pipeline.topics.reddit import RedditSource
+from verticals.topics.base import TopicCandidate, TopicSource
+from verticals.topics.manual import ManualSource
+from verticals.topics.reddit import RedditSource
 
 
 class TestTopicCandidate:
@@ -44,7 +44,7 @@ class TestRedditSource:
         src = RedditSource({"subreddits": ["gaming", "science"]})
         assert src.subreddits == ["gaming", "science"]
 
-    @patch("pipeline.topics.reddit.requests.get")
+    @patch("verticals.topics.reddit.requests.get")
     def test_fetch_parses_reddit_json(self, mock_get):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -95,7 +95,7 @@ class TestRedditSource:
         assert topics[0].trending_score > topics[1].trending_score
         assert topics[0].metadata["score"] == 15000
 
-    @patch("pipeline.topics.reddit.requests.get")
+    @patch("verticals.topics.reddit.requests.get")
     def test_fetch_handles_error(self, mock_get):
         mock_get.side_effect = Exception("Network error")
         src = RedditSource({"subreddits": ["technology"]})

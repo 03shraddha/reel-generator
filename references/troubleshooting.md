@@ -14,7 +14,7 @@ Re-run `python scripts/setup_youtube_oauth.py` to refresh the OAuth token.
 ## ElevenLabs Errors
 
 **`401 Unauthorized`**
-Wrong API key. Check `ELEVENLABS_API_KEY` in `~/.youtube-shorts-pipeline/config.json` or your environment variables.
+Wrong API key. Check `ELEVENLABS_API_KEY` in `~/.verticals/config.json` or your environment variables.
 
 **`403 / blocked`**
 Free tier blocked on server IPs. Must use Pro account ($22/mo).
@@ -33,7 +33,7 @@ File is incomplete or corrupted. Re-download or re-generate the video.
 ## Gemini / Image Generation Errors
 
 **`API key invalid`**
-Check `GEMINI_API_KEY` in `~/.youtube-shorts-pipeline/config.json` or your environment variables.
+Check `GEMINI_API_KEY` in `~/.verticals/config.json` or your environment variables.
 
 **`RESOURCE_EXHAUSTED`**
 Gemini free tier rate limit. Wait 60 seconds and retry.
@@ -62,7 +62,7 @@ The `music/` directory must contain `.mp3` files. Add royalty-free tracks (e.g. 
 ## Topic Engine
 
 **`python -m pipeline topics` returns no results**
-Check `~/.youtube-shorts-pipeline/config.json` has `topic_sources` configured. Reddit and RSS are enabled by default. Google Trends requires `pytrends`: `pip install pytrends`.
+Check `~/.verticals/config.json` has `topic_sources` configured. Reddit and RSS are enabled by default. Google Trends requires `pytrends`: `pip install pytrends`.
 
 ## Thumbnail
 
@@ -80,4 +80,4 @@ Use `--force` only when you want to redo everything. Without it, the pipeline re
 Missing dependency. Run `pip install anthropic google-api-python-client google-auth google-auth-oauthlib pillow requests openai-whisper feedparser` in your environment.
 
 **Draft JSON not found**
-Drafts are saved to `~/.youtube-shorts-pipeline/drafts/<timestamp>.json`. Check the timestamp from the draft command output.
+Drafts are saved to `~/.verticals/drafts/<timestamp>.json`. Check the timestamp from the draft command output.

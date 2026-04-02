@@ -57,7 +57,7 @@ class NewsAPISource(TopicSource):
                 },
                 # API key sent via header, not URL param, to avoid leaking in logs
                 headers={
-                    "User-Agent": "yt-shorts-pipeline/3.0",
+                    "User-Agent": "verticals/3.0",
                     "X-Api-Key": self._api_key,
                 },
                 timeout=10,

@@ -1,27 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
 [project]
-name = "youtube-shorts-pipeline"
+name = "verticals"
 version = "3.0.0"
-description = "AI-native YouTube Shorts production pipeline"
+description = "AI-native vertical video engine with niche intelligence"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
-license = "MIT"
 dependencies = [
     "anthropic>=0.39.0,<1.0",
     "requests>=2.31.0,<3.0",
-    "pillow>=10.0.0,<12.0",
+    "Pillow>=10.0.0,<11.0",
+    "feedparser>=6.0.0,<7.0",
     "google-api-python-client>=2.100.0,<3.0",
     "google-auth>=2.23.0,<3.0",
     "google-auth-oauthlib>=1.1.0,<2.0",
     "openai-whisper>=20231117",
-    "feedparser>=6.0.0,<7.0",
+    "PyYAML>=6.0,<7.0",
+    "edge-tts>=6.1.0,<7.0",
 ]
 
 [project.optional-dependencies]
-trends = ["pytrends"]
-dev = ["pytest", "pytest-mock"]
+dev = ["pytest>=7.0", "pytest-mock>=3.0"]
 
-[project.scripts]
-yt-shorts = "pipeline.__main__:main"
-
-[build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+[tool.setuptools.packages.find]
+include = ["verticals*"]

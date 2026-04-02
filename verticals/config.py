@@ -10,7 +10,7 @@ from pathlib import Path
 # ─────────────────────────────────────────────────────
 # Skill home directory — all data lives here
 # ─────────────────────────────────────────────────────
-SKILL_DIR = Path.home() / ".youtube-shorts-pipeline"
+SKILL_DIR = Path.home() / ".verticals"
 DRAFTS_DIR = SKILL_DIR / "drafts"
 MEDIA_DIR = SKILL_DIR / "media"
 LOGS_DIR = SKILL_DIR / "logs"
@@ -197,7 +197,7 @@ def get_claude_backend() -> str:
         return "cli"
     raise RuntimeError(
         "No Claude access found. Either:\n"
-        "  1. Set ANTHROPIC_API_KEY in env or ~/.youtube-shorts-pipeline/config.json\n"
+        "  1. Set ANTHROPIC_API_KEY in env or ~/.verticals/config.json\n"
         "  2. Log in to Claude Code (claude login) with a Claude Max subscription"
     )
 
@@ -242,10 +242,10 @@ def save_config(config: dict):
 def run_setup():
     """Interactive first-run setup — saves config.json and runs YouTube OAuth."""
     print("\n" + "=" * 60)
-    print("  YouTube Shorts Pipeline — First-Run Setup")
+    print("  Verticals v3 — First-Run Setup")
     print("=" * 60)
     print("\nThis wizard will configure your API keys and YouTube access.")
-    print("Keys are saved to ~/.youtube-shorts-pipeline/config.json\n")
+    print("Keys are saved to ~/.verticals/config.json\n")
 
     SKILL_DIR.mkdir(parents=True, exist_ok=True)
 

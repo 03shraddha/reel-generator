@@ -1,6 +1,6 @@
 """Tests for pipeline/music.py — duck filter generation, speech region merging."""
 
-from pipeline.music import build_duck_filter
+from verticals.music import build_duck_filter
 
 
 class TestBuildDuckFilter:

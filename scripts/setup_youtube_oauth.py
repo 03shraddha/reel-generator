@@ -3,7 +3,7 @@
 YouTube OAuth Setup
 ===================
 Run once to authorise YouTube API access. Opens a browser window for
-Google sign-in and saves the OAuth token to ~/.youtube-shorts-pipeline/youtube_token.json.
+Google sign-in and saves the OAuth token to ~/.verticals/youtube_token.json.
 
 Prerequisites:
   1. Go to https://console.cloud.google.com
@@ -27,7 +27,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/youtube.force-ssl",  # needed for captions; narrower than full youtube scope
 ]
 
-SKILL_DIR  = Path.home() / ".youtube-shorts-pipeline"
+SKILL_DIR  = Path.home() / ".verticals"
 TOKEN_PATH = SKILL_DIR / "youtube_token.json"
 
 

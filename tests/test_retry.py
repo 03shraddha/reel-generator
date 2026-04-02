@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pipeline.retry import with_retry
+from verticals.retry import with_retry
 
 
 class TestWithRetry:
@@ -15,7 +15,7 @@ class TestWithRetry:
 
         assert always_works() == "success"
 
-    @patch("pipeline.retry.time.sleep")
+    @patch("verticals.retry.time.sleep")
     def test_retries_on_failure(self, mock_sleep):
         call_count = 0
 
@@ -32,7 +32,7 @@ class TestWithRetry:
         assert call_count == 3
         assert mock_sleep.call_count == 2
 
-    @patch("pipeline.retry.time.sleep")
+    @patch("verticals.retry.time.sleep")
     def test_raises_after_max_retries(self, mock_sleep):
         @with_retry(max_retries=2, base_delay=0.01)
         def always_fails():
@@ -43,7 +43,7 @@ class TestWithRetry:
         # Should have slept twice (before retry 2 and 3)
         assert mock_sleep.call_count == 2
 
-    @patch("pipeline.retry.time.sleep")
+    @patch("verticals.retry.time.sleep")
     def test_exponential_backoff(self, mock_sleep):
         call_count = 0
 

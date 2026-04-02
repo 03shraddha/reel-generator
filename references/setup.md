@@ -89,7 +89,7 @@ python3 scripts/setup_youtube_oauth.py
 This will:
 - Ask for the path to your `client_secret.json`
 - Open a browser for Google sign-in
-- Save the OAuth token to `~/.youtube-shorts-pipeline/youtube_token.json`
+- Save the OAuth token to `~/.verticals/youtube_token.json`
 
 Scopes requested: `youtube.upload`, `youtube.force-ssl` (minimum for upload + captions)
 
@@ -99,32 +99,32 @@ Scopes requested: `youtube.upload`, `youtube.force-ssl` (minimum for upload + ca
 
 ### First run — automatic setup wizard
 ```bash
-python3 scripts/pipeline.py draft --news "your topic here"
+python3 python -m verticals draft --news "your topic here"
 ```
 
-On first run (no `~/.youtube-shorts-pipeline/config.json`), the wizard will prompt for all keys and run the YouTube OAuth flow.
+On first run (no `~/.verticals/config.json`), the wizard will prompt for all keys and run the YouTube OAuth flow.
 
 ### After setup
 
 ```bash
 # Draft only (generate script + metadata)
-python3 scripts/pipeline.py draft --news "your topic here"
+python3 python -m verticals draft --news "your topic here"
 
 # Produce (generate video from draft)
-python3 scripts/pipeline.py produce --draft ~/.youtube-shorts-pipeline/drafts/<id>.json
+python3 python -m verticals produce --draft ~/.verticals/drafts/<id>.json
 
 # Upload
-python3 scripts/pipeline.py upload --draft ~/.youtube-shorts-pipeline/drafts/<id>.json
+python3 python -m verticals upload --draft ~/.verticals/drafts/<id>.json
 
 # Full pipeline in one command
-python3 scripts/pipeline.py run --news "your topic here"
+python3 python -m verticals run --news "your topic here"
 ```
 
 ---
 
 ## 6. Config Reference
 
-Keys are stored in `~/.youtube-shorts-pipeline/config.json`:
+Keys are stored in `~/.verticals/config.json`:
 
 ```json
 {

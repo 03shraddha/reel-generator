@@ -25,7 +25,7 @@ class TwitterSource(TopicSource):
         try:
             # Twitter guest API for trends (may be rate-limited)
             url = "https://api.twitter.com/2/trends/by/woeid/1"
-            headers = {"User-Agent": "yt-shorts-pipeline/2.0"}
+            headers = {"User-Agent": "verticals/3.0"}
             r = requests.get(url, headers=headers, timeout=10)
 
             if r.status_code != 200:

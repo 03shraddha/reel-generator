@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pipeline.captions import (
+from verticals.captions import (
     _group_words,
     _format_ass_time,
     _generate_ass,

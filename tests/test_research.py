@@ -1,6 +1,6 @@
 """Tests for pipeline/research.py — keyword extraction + research."""
 
-from pipeline.config import extract_keywords
+from verticals.config import extract_keywords
 
 
 class TestExtractKeywords:

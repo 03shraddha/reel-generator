@@ -1,243 +1,346 @@
-# YouTube Shorts Pipeline v3
+# Verticals v3
 
-**v3.0.0** — [Changelog](CHANGELOG.md)
+**The open source AI content engine with built in niche intelligence.**
 
-> Turn a one-line topic into a published YouTube Short in minutes.
-> Fully automated: **research -> script -> AI visuals -> voiceover -> captions -> music -> upload.**
+> Topic in. Published Short out. Any niche. ~$0.11 per video.
+>
+> **[Try it in Google Colab](link) · [Web UI](#web-ui) · [CLI Quickstart](#cli-quickstart) · [Hosted Version](https://verticals.gg)**
 
----
+```
+python -m verticals run --topic "Sam Altman just mass-fired 200 safety researchers" --niche tech
+```
 
-## What's New in v3
+That one command researches the topic, writes a hook driven script tuned to tech YouTube, generates cinematic b roll, records a natural voiceover, burns in animated captions, adds mood matched background music, generates a thumbnail, and uploads it to YouTube. ~90 seconds of video, ~3 minutes of wall time, ~$0.11 in API costs.
 
-- **Niche support** — `--niche` flag tailors topic sources, subreddits, and Claude script tone to your content category
-- **NewsAPI integration** — optional top-headlines source (free API key at newsapi.org); silently skipped if key absent
-- **Multi-platform scaffold** — `--platform` flag targets Shorts, Reels, or TikTok with per-platform script length hints
-- **Extended language support** — see [Language Support](#language-support)
+## What Changed in v3
 
----
+v2 was an esports news pipeline. v3 is a **general purpose content engine** that works for any niche, any topic, any creator.
 
-## What's New in v2
+The biggest change: **Niche Intelligence**. Every stage of the pipeline now reads from a niche profile that shapes script tone, visual style, caption aesthetics, music mood, and thumbnail strategy. Ship a cooking Short and it writes like a cooking creator, generates food photography b roll, and picks warm upbeat background music. Ship a true crime Short and the tone shifts to suspenseful, the visuals go dark and cinematic, and the music drops to ambient tension.
 
-- **Burned-in captions** — word-by-word highlight via ASS subtitles (Whisper word timestamps)
-- **Background music** — bundled royalty-free tracks with automatic voice-ducking
-- **Topic engine** — discover trending topics from Reddit, RSS, Google Trends, Twitter, TikTok
-- **Thumbnail generation** — Gemini Imagen + Pillow text overlay, auto-uploaded
-- **Resume capability** — pipeline state tracked per stage, re-runs skip completed work
-- **Retry logic** — exponential backoff on all API calls (Gemini, ElevenLabs, Claude, YouTube)
-- **Structured logging** — file + console logging, `--verbose` for debug output
-- **78 tests** — comprehensive test suite across all modules
+15 niches ship out of the box. Build your own in 5 minutes.
 
----
+Other highlights: multi provider LLM support (Claude, Gemini, GPT, Ollama local), free TTS via Edge TTS, stock footage fallback when you don't want AI images, multi platform export (YouTube, TikTok, Reels, X), a Gradio web UI for non developers, and Google Colab for zero install usage.
 
-## Pipeline Stages
+## How It Works
 
-| Stage | What happens |
-|-------|-------------|
-| **Draft** | DuckDuckGo research -> Claude script -> b-roll prompts, YouTube metadata, thumbnail prompt |
-| **Produce** | Gemini Imagen b-roll (Ken Burns) -> ElevenLabs voiceover -> Whisper captions (ASS + SRT) -> music selection + ducking -> ffmpeg assembly with burned-in captions + background music |
-| **Upload** | YouTube upload with metadata + SRT captions + AI thumbnail |
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        NICHE PROFILE                            │
+│  Loaded once. Shapes every stage. 15 built in or bring your own │
+└─────────────┬───────────────────────────────────────────────────┘
+              │
+              ▼
+┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
+│ RESEARCH │→ │  SCRIPT  │→ │ VISUALS  │→ │  VOICE   │→ │ CAPTIONS │→ │ ASSEMBLE │→ UPLOAD
+│          │  │          │  │          │  │          │  │          │  │          │
+│ DuckDuck │  │ LLM with │  │ Gemini   │  │ ElevenLabs│  │ Whisper  │  │ ffmpeg   │
+│ Go + web │  │ niche    │  │ Replicate│  │ Edge TTS │  │ word     │  │ Ken Burns│
+│ scraping │  │ persona  │  │ Pexels   │  │ Kokoro   │  │ level    │  │ + music  │
+│          │  │ + hooks  │  │ ComfyUI  │  │ Bark     │  │ ASS+SRT  │  │ ducking  │
+└──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘
+```
 
-**Anti-hallucination gate:** Claude only uses names/facts from live DuckDuckGo research.
+**Stage by stage:**
 
----
+**Research** — Searches DuckDuckGo (and optionally scrapes source URLs) for live facts. Every name, number, and claim in the final script traces back to this research. This is the anti hallucination gate: the LLM is instructed to use only facts from research data, never its training knowledge.
 
-## Quick Start
+**Script** — An LLM (your choice of provider) writes a 60 to 90 second voiceover script using the niche profile's tone, pacing rules, and hook patterns. The profile tells the LLM things like "open with a question, not a statement" for tech niches or "open with a shocking statistic" for finance niches. Output includes the script, b roll image prompts, thumbnail prompt, and platform metadata for YouTube/TikTok/Instagram/X.
 
-**1. Install dependencies**
+**Visuals** — Generates 3 to 5 b roll frames via your configured image provider: Gemini Imagen (default, free tier available), Replicate (Flux, SDXL), or stock footage from Pexels/Pixabay (completely free, no API key needed). Images are auto cropped to 9:16 portrait. The niche profile shapes the visual vocabulary: a fitness niche generates gym and movement imagery, a science niche generates diagrams and lab visuals.
+
+**Voice** — Text to speech via your configured provider: Edge TTS (free, cross platform, 300+ voices, **recommended default**), ElevenLabs (premium, most natural), Kokoro (local, open source), or macOS `say` (fallback). The niche profile suggests voice characteristics (pace, energy, tone) but the final voice selection is yours.
+
+**Captions** — Whisper generates word level timestamps. The pipeline produces both ASS (burned in with word by word yellow highlight) and SRT (uploaded to YouTube for closed captions). Caption styling follows the niche profile: bold energetic fonts for gaming, clean minimal for tech, warm handwritten feel for lifestyle.
+
+**Assemble** — ffmpeg combines animated b roll (Ken Burns zoom/pan effects), voiceover, burned in captions, and background music with automatic voice ducking. Music selection is mood matched to the niche profile.
+
+**Upload** — Publishes to YouTube (private by default) with title, description, tags, SRT captions, and AI generated thumbnail. TikTok and Instagram export coming in v3.1.
+
+## Niche Intelligence
+
+This is what makes Verticals different from every other AI video tool.
+
+A niche profile is a YAML file that tells the pipeline how to think about content for a specific audience. It shapes every stage without requiring any prompt engineering from you.
+
+```yaml
+# niches/tech.yaml
+name: tech
+display_name: "Tech & AI News"
+
+script:
+  tone: "informed, slightly opinionated, conversational"
+  pacing: "fast, dense with facts, no filler"
+  hooks:
+    - pattern: "contrarian_take"
+      template: "Everyone is celebrating {topic}. Here's why that's a problem."
+    - pattern: "breaking_news"
+      template: "This just happened and nobody is talking about it."
+    - pattern: "prediction"
+      template: "{topic} changes everything. Here's what happens next."
+    - pattern: "explainer"
+      template: "Let me explain {topic} in 60 seconds because most people are getting this wrong."
+    - pattern: "comparison"
+      template: "{thing_a} vs {thing_b}. One of these wins and it's not even close."
+  cta_variants:
+    - "Follow for daily tech breakdowns."
+    - "Subscribe. I cover AI news nobody else is talking about."
+    - "Drop a comment: do you agree?"
+  word_count: "150 to 170"
+  forbidden: ["like and subscribe", "smash that bell", "what's up guys"]
+
+visuals:
+  style: "clean, minimal, dark backgrounds, neon accents"
+  mood: "futuristic, sleek, professional"
+  subjects: ["circuit boards", "code on screens", "server rooms", "product shots", "data visualizations"]
+  avoid: ["stock photo people smiling at laptops", "generic office", "clipart"]
+
+voice:
+  pace: "slightly fast, ~160 wpm"
+  energy: "confident, authoritative but not robotic"
+  suggested_voices:
+    edge_tts: "en-US-GuyNeural"
+    elevenlabs: "JBFqnCBsd6RMkjVDRZzb"
+
+captions:
+  highlight_color: "#00FF88"
+  font_weight: "bold"
+  position: "lower_third"
+
+music:
+  mood: "ambient electronic, subtle energy, no lyrics"
+  energy: "medium"
+
+thumbnail:
+  style: "dark background, bold white/green text, product or face focus"
+  text_position: "left_aligned"
+```
+
+**15 built in niches:** tech, gaming, finance, fitness, cooking, travel, true_crime, science, politics, entertainment, sports, fashion, education, motivation, comedy.
+
+**Build your own** by copying any profile and editing it. Drop the YAML in `niches/` and reference it with `--niche your_niche_name`.
+
+## Quickstart
+
+### Option A: Google Colab (zero install)
+
+Open the [Colab notebook](link), paste your API keys, pick a niche, enter a topic, click Run. Done.
+
+### Option B: Web UI (Gradio)
+
 ```bash
+git clone https://github.com/rushindrasinha/verticals.git
+cd verticals
 pip install -r requirements.txt
+python -m verticals ui
 ```
 
-**2. Run the pipeline (setup wizard launches on first run)**
-```bash
-cd youtube-shorts-pipeline
-python -m pipeline run --news "your topic here" --dry-run
-```
+Opens a browser UI at `localhost:7860`. Pick a niche, enter a topic, click Generate. Preview the draft before producing.
 
-**3. Set up YouTube OAuth (when ready to upload)**
-```bash
-python scripts/setup_youtube_oauth.py
-```
-
----
-
-## Usage
-
-### Draft — generate script and metadata
-```bash
-python -m pipeline draft --news "your topic"
-python -m pipeline draft --news "your topic" --niche fitness
-python -m pipeline draft --discover              # use topic engine
-python -m pipeline draft --discover --auto-pick   # let Claude pick
-```
-
-### Produce — generate video from a saved draft
-```bash
-python -m pipeline produce --draft ~/.youtube-shorts-pipeline/drafts/<id>.json
-python -m pipeline produce --draft <path> --force  # redo all stages
-```
-
-### Upload — push to YouTube with thumbnail
-```bash
-python -m pipeline upload --draft ~/.youtube-shorts-pipeline/drafts/<id>.json
-```
-
-### Full pipeline
-```bash
-python -m pipeline run --news "your topic"
-python -m pipeline run --news "your topic" --niche tech --platform shorts
-python -m pipeline run --discover --auto-pick     # trending topic, auto-selected
-```
-
-### Discover trending topics
-```bash
-python -m pipeline topics
-python -m pipeline topics --limit 20 --niche finance
-```
-
-### Options
-- `--niche NICHE` — content niche: `gaming`, `finance`, `fitness`, `tech`, `beauty`, `food`, `travel`, `general`
-- `--platform PLATFORM` — target platform: `shorts`, `reels`, `tiktok`, `all`
-- `--lang en|hi` — language for voiceover + captions
-- `--verbose` — debug logging
-- `--force` — redo completed stages
-- `--dry-run` — draft only, skip produce/upload
-- `--context "..."` — channel context for script generation
-
----
-
-## Language Support
-
-Voiceover and captions support `en` (English) and `hi` (Hindi) via the `--lang` flag. ElevenLabs multilingual v2 handles both; macOS `say` is the English fallback when no ElevenLabs key is configured.
-
-To add more languages: extend `VOICE_ID_*` in `config.py`, add a matching Whisper language code in `captions.py`, and add a fallback voice command in `voiceover.py`.
-
----
-
-## Niche Examples
-
-| Niche | Script tone | Default topic sources |
-|-------|-------------|----------------------|
-| `gaming` | Hype, shorthand, community energy | r/gaming, r/pcgaming + NewsAPI gaming query |
-| `finance` | Clear, measured, data-driven | r/personalfinance, r/investing + NewsAPI finance query |
-| `fitness` | Motivational, actionable | r/fitness, r/bodyweightfitness + NewsAPI fitness query |
-| `tech` | Curious, accessible, forward-looking | r/technology, r/artificial + Hacker News RSS + NewsAPI tech query |
-| `food` | Warm, sensory, inviting | r/food, r/recipes + NewsAPI food query |
-| `travel` | Aspirational, vivid | r/travel, r/solotravel + NewsAPI travel query |
+### Option C: CLI (developers)
 
 ```bash
-# Finance short — auto-pick a trending story
-python -m pipeline run --discover --auto-pick --niche finance
+git clone https://github.com/rushindrasinha/verticals.git
+cd verticals
+pip install -r requirements.txt
 
-# Gaming short for TikTok
-python -m pipeline run --news "best RPGs of 2025" --niche gaming --platform tiktok
-
-# Tech short for Shorts
-python -m pipeline run --discover --auto-pick --niche tech --platform shorts
-
-# Food short for Instagram Reels
-python -m pipeline run --news "viral pasta recipe trend" --niche food --platform reels
-
-# Fitness short in Hindi
-python -m pipeline run --news "5-minute morning workout" --niche fitness --lang hi
-
-# Travel — browse topics and pick manually
-python -m pipeline topics --niche travel
-python -m pipeline draft --discover --niche travel
+# First run triggers setup wizard (API keys)
+python -m verticals run --topic "your topic" --niche tech
 ```
 
----
+## CLI Commands
 
-## Topic Sources
-
-| Source | Method | Auth |
-|--------|--------|------|
-| Reddit | `.json` API (hot/trending) | None |
-| RSS | `feedparser` (any feed URL) | None |
-| Google Trends | `pytrends` library | None |
-| NewsAPI | Top headlines REST API | `NEWSAPI_KEY` |
-| Twitter/X | Public trends API | Optional |
-| TikTok | Apify actor | Optional |
-
-Configure in `~/.youtube-shorts-pipeline/config.json`:
-```json
-{
-  "topic_sources": {
-    "reddit": {"enabled": true, "subreddits": ["technology", "worldnews"]},
-    "rss": {"enabled": true, "feeds": ["https://hnrss.org/frontpage"]},
-    "google_trends": {"enabled": true, "geo": "IN"},
-    "newsapi": {"enabled": true}
-  }
-}
+### Full pipeline (topic to published Short)
+```bash
+python -m verticals run --topic "headline" --niche tech
+python -m verticals run --topic "headline" --niche cooking --provider ollama
+python -m verticals run --discover --niche gaming --auto-pick
 ```
 
----
+### Individual stages
+```bash
+python -m verticals draft --topic "headline" --niche tech
+python -m verticals produce --draft <path> --lang en
+python -m verticals upload --draft <path> --platform youtube
+python -m verticals topics --niche tech --limit 20
+```
+
+### Useful flags
+```
+--niche NAME         Niche profile (default: general)
+--provider NAME      LLM provider: claude, gemini, openai, ollama (default: claude)
+--voice NAME         TTS provider: edge, elevenlabs, kokoro, say (default: edge)
+--visuals NAME       Image provider: gemini, replicate, pexels, comfyui (default: gemini)
+--platform NAME      Upload target: youtube, tiktok, reels, x (default: youtube)
+--lang CODE          Language: en, hi, es, pt, de, fr, ja, ko (default: en)
+--dry-run            Draft only, skip produce and upload
+--force              Redo all stages even if completed
+--verbose            Debug logging
+```
+
+## Provider Support
+
+### LLM (script generation)
+
+| Provider | Cost | Setup | Notes |
+|----------|------|-------|-------|
+| **Claude** (Anthropic) | ~$0.02/script | `ANTHROPIC_API_KEY` | Best quality. Default. |
+| **Gemini** (Google) | Free tier available | `GEMINI_API_KEY` | Good quality, generous free tier. |
+| **GPT** (OpenAI) | ~$0.01/script | `OPENAI_API_KEY` | Solid alternative. |
+| **Ollama** (local) | Free | Install Ollama + pull model | No API key needed. Quality varies by model. |
+| **Claude CLI** | Free w/ Max sub | Install Claude Code | Uses Claude Max subscription, no API key. |
+
+### TTS (voiceover)
+
+| Provider | Cost | Setup | Notes |
+|----------|------|-------|-------|
+| **Edge TTS** | Free | None | **Recommended default.** 300+ voices, cross platform. |
+| **ElevenLabs** | ~$0.05/video | `ELEVENLABS_API_KEY` | Most natural. Premium. |
+| **Kokoro** | Free | `pip install kokoro` | Local, open source. |
+| **macOS say** | Free | macOS only | Basic fallback. |
+
+### Visuals (b roll)
+
+| Provider | Cost | Setup | Notes |
+|----------|------|-------|-------|
+| **Gemini Imagen** | Free tier available | `GEMINI_API_KEY` | Default. Good quality. |
+| **Replicate** | ~$0.01/image | `REPLICATE_API_TOKEN` | Flux, SDXL, more models. |
+| **Pexels** | Free | `PEXELS_API_KEY` | Stock footage. No generation. |
+| **ComfyUI** | Free (local GPU) | Running ComfyUI server | Best quality if you have hardware. |
+
+### Upload
+
+| Platform | Status | Auth |
+|----------|--------|------|
+| **YouTube** | Stable | OAuth (setup wizard) |
+| **TikTok** | v3.1 | Coming soon |
+| **Instagram Reels** | v3.1 | Coming soon |
+| **X (Twitter)** | v3.1 | Coming soon |
+
+## $0.00 Mode (completely free)
+
+Yes, you can run this with zero API spend:
+
+```bash
+python -m verticals run \
+  --topic "your topic" \
+  --niche tech \
+  --provider ollama \
+  --voice edge \
+  --visuals pexels
+```
+
+Uses Ollama (local LLM), Edge TTS (free Microsoft voices), and Pexels (free stock footage). You need a machine that can run a 7B+ parameter model and a free Pexels API key. Quality is lower than the full API stack but it works.
 
 ## Configuration
 
-Keys in `~/.youtube-shorts-pipeline/config.json` (0600 permissions):
+All keys stored in `~/.verticals/config.json` with 0600 permissions:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | Claude API key |
-| `GEMINI_API_KEY` | Yes | Gemini Imagen API key |
-| `ELEVENLABS_API_KEY` | Optional | ElevenLabs TTS (fallback: macOS `say`) |
-| `VOICE_ID_EN` | Optional | ElevenLabs voice ID for English |
-| `VOICE_ID_HI` | Optional | ElevenLabs voice ID for Hindi |
-| `NEWSAPI_KEY` | Optional | NewsAPI key for top-headlines source |
+| Variable | Required | Used By |
+|----------|----------|---------|
+| `ANTHROPIC_API_KEY` | If using Claude | Script generation |
+| `GEMINI_API_KEY` | If using Gemini visuals/LLM | B roll + thumbnails |
+| `OPENAI_API_KEY` | If using GPT | Script generation |
+| `ELEVENLABS_API_KEY` | If using ElevenLabs | Premium voiceover |
+| `REPLICATE_API_TOKEN` | If using Replicate | B roll images |
+| `PEXELS_API_KEY` | If using Pexels | Stock footage |
 
-Environment variables take priority over the config file.
+Environment variables override config file values.
 
----
+## Topic Discovery
+
+Discover trending topics from multiple sources, filtered by niche relevance:
+
+```bash
+python -m verticals topics --niche tech --limit 20
+```
+
+| Source | Method | Auth | Niche Filtering |
+|--------|--------|------|-----------------|
+| Reddit | `.json` API | None | Subreddit mapping per niche |
+| RSS | feedparser | None | Configurable feeds per niche |
+| Google Trends | pytrends | None | Geo + category filtering |
+| Twitter/X | Public API | Optional | Keyword filtering |
+| TikTok | Apify | Optional | Hashtag mapping |
+| YouTube Trending | RSS/API | None | Category mapping |
+| Hacker News | API | None | Tech/startup default |
+
+Configure per niche in your profile:
+```yaml
+# In niches/tech.yaml
+discovery:
+  reddit: ["technology", "artificial", "MachineLearning", "singularity"]
+  rss: ["https://hnrss.org/frontpage", "https://techcrunch.com/feed"]
+  google_trends_category: "t"
+  youtube_trending_category: "28"
+```
+
+## Cost Per Video
+
+| Configuration | Cost |
+|---------------|------|
+| **Premium** (Claude + Gemini + ElevenLabs) | ~$0.11 |
+| **Budget** (Gemini + Gemini + Edge TTS) | ~$0.04 |
+| **Free** (Ollama + Pexels + Edge TTS) | $0.00 |
 
 ## Project Structure
 
 ```
-youtube-shorts-pipeline/
-├── pyproject.toml
-├── music/                     # Bundled royalty-free tracks
-├── pipeline/
-│   ├── __main__.py            # CLI entry point
-│   ├── config.py              # Keys, paths, constants, setup wizard
-│   ├── state.py               # Resume capability (stage tracking)
-│   ├── retry.py               # @with_retry exponential backoff
-│   ├── log.py                 # Structured file + console logging
-│   ├── research.py            # DuckDuckGo research
-│   ├── draft.py               # Claude script generation
-│   ├── broll.py               # Gemini Imagen + Ken Burns
-│   ├── voiceover.py           # ElevenLabs TTS + macOS say
-│   ├── captions.py            # Whisper word timestamps + ASS/SRT
-│   ├── music.py               # Track selection + ducking
-│   ├── assemble.py            # ffmpeg video assembly
-│   ├── thumbnail.py           # Gemini thumbnail + Pillow overlay
-│   ├── upload.py              # YouTube API upload
-│   └── topics/                # Multi-source topic engine
-│       ├── base.py, engine.py
-│       ├── reddit.py, rss.py
-│       ├── google_trends.py
-│       ├── newsapi.py
-│       ├── twitter.py, tiktok.py
-│       └── manual.py
-├── tests/                     # 78 tests
+verticals/
+├── verticals/
+│   ├── __main__.py            # CLI + Gradio UI entry point
+│   ├── config.py              # Keys, paths, setup wizard
+│   ├── niche.py               # Niche profile loader
+│   ├── providers/
+│   │   ├── llm.py             # Claude / Gemini / GPT / Ollama
+│   │   ├── tts.py             # ElevenLabs / Edge / Kokoro / say
+│   │   ├── image.py           # Gemini / Replicate / Pexels / ComfyUI
+│   │   └── upload.py          # YouTube / TikTok / Reels / X
+│   ├── stages/
+│   │   ├── research.py        # DuckDuckGo + web scraping
+│   │   ├── draft.py           # Script generation with niche intelligence
+│   │   ├── broll.py           # Image generation + Ken Burns
+│   │   ├── voiceover.py       # TTS with niche voice config
+│   │   ├── captions.py        # Whisper + ASS/SRT
+│   │   ├── music.py           # Track selection + ducking
+│   │   ├── assemble.py        # ffmpeg final assembly
+│   │   └── thumbnail.py       # Thumbnail generation + text overlay
+│   ├── topics/                # Multi source topic engine
+│   ├── state.py               # Resume capability
+│   ├── retry.py               # Exponential backoff
+│   └── log.py                 # Structured logging
+├── niches/                    # 15 built in niche profiles
+│   ├── tech.yaml
+│   ├── gaming.yaml
+│   ├── finance.yaml
+│   ├── fitness.yaml
+│   ├── cooking.yaml
+│   ├── travel.yaml
+│   ├── true_crime.yaml
+│   ├── science.yaml
+│   ├── politics.yaml
+│   ├── entertainment.yaml
+│   ├── sports.yaml
+│   ├── fashion.yaml
+│   ├── education.yaml
+│   ├── motivation.yaml
+│   ├── comedy.yaml
+│   └── general.yaml           # Default fallback
+├── music/                     # Bundled royalty free tracks
+├── ui/                        # Gradio web interface
+├── tests/
+├── notebooks/
+│   └── verticals_colab.ipynb   # Google Colab notebook
+├── docker-compose.yml
+├── Dockerfile
 ├── scripts/
 │   └── setup_youtube_oauth.py
-└── references/
-    ├── setup.md
-    └── troubleshooting.md
+├── references/
+│   ├── setup.md
+│   └── troubleshooting.md
+├── pyproject.toml
+└── requirements.txt
 ```
-
----
-
-## Cost per Video
-
-| Service | Cost |
-|---------|------|
-| Anthropic (Claude Sonnet) | ~$0.02 |
-| Google Gemini Imagen (3 b-roll + 1 thumbnail) | ~$0.04 |
-| ElevenLabs (60-90 sec) | ~$0.05 |
-| **Total** | **~$0.11** |
-
----
 
 ## Testing
 
@@ -246,34 +349,42 @@ pip install pytest pytest-mock
 python -m pytest tests/ -v
 ```
 
----
+## Docker
 
-## Troubleshooting
-
-See [`references/troubleshooting.md`](references/troubleshooting.md).
-
----
+```bash
+docker compose up --build
+# Opens web UI at localhost:7860
+```
 
 ## Security
 
-This pipeline handles API keys and OAuth tokens. The following measures are in place:
+All security measures from v2 carry forward, plus:
 
-- **Credential storage:** `config.json` and `youtube_token.json` are created atomically with `0600` permissions (owner-only) via `os.open()` — no window where the file is world-readable. Never commit these files — they are covered by `.gitignore`.
-- **API key transmission:** The Gemini API key is sent via the `x-goog-api-key` header; the NewsAPI key via the `X-Api-Key` header — neither as a URL query parameter, so neither will leak into logs or error messages.
-- **Error handling:** API error messages are sanitized to never include credentials.
-- **Upload privacy:** Videos are uploaded as **private** by default. Change to `public` or `unlisted` manually on YouTube when ready.
-- **OAuth scope:** YouTube OAuth requests the minimum scopes needed (`youtube.upload` + `youtube.force-ssl`), not full account access.
-- **Token expiry:** Expired tokens with no refresh token produce a clear error message directing you to re-run the OAuth setup.
-- **Prompt injection mitigation:** Search result snippets injected into the Claude prompt are truncated and wrapped in boundary markers to reduce prompt injection risk.
-- **LLM output validation:** Fields returned by Claude are type-checked before use in metadata and file operations.
-- **Dependency pinning:** `requirements.txt` pins all dependencies with compatible-release bounds to reduce supply-chain risk.
+**Credential storage:** Config and tokens use 0600 permissions via atomic `os.open()`.
+**API key handling:** All providers send keys via headers, never URL parameters.
+**Upload privacy:** YouTube uploads default to private.
+**Prompt injection:** Research snippets truncated to 300 chars with boundary markers. LLM output fields are type checked before use.
+**OAuth scopes:** Minimum required scopes per platform.
+**Niche profiles:** YAML parsed with safe_load (no code execution).
+**Dependency pinning:** Compatible release bounds on all packages.
 
----
+## Roadmap
 
-## Licence
+**v3.0** (this release)
+  Niche intelligence, multi provider LLM/TTS/image, Gradio UI, Colab notebook, Edge TTS default, Pexels stock footage, Docker support
+
+**v3.1** (planned)
+  TikTok/Instagram/X upload, multi language niche profiles, A/B script variants (generate 2, pick better), scheduled batch production
+
+**v3.2** (planned)
+  Analytics integration (which Shorts performed best), niche profile auto tuning based on performance data, series support (multi episode narrative arcs)
+
+## From the Same Team
+
+This pipeline is built by the team behind [Global Esports](https://globalesports.in) (South Asia's only VCT Pacific franchise) and [thumbnail.gg](https://thumbnail.gg) (AI thumbnail generation with deep niche intelligence).
+
+**Want the premium version?** [verticals.gg](https://verticals.gg) offers multi variant script generation, CTR optimized thumbnails, competitive intelligence, and a managed hosted experience with no setup required.
+
+## License
 
 MIT
-
----
-
-> Want this on autopilot — no setup, no terminal, just results? → [verticals.gg](https://verticals.gg)

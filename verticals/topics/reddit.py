@@ -26,7 +26,7 @@ class RedditSource(TopicSource):
 
     def _fetch_subreddit(self, subreddit: str, limit: int) -> list[TopicCandidate]:
         url = f"https://www.reddit.com/r/{subreddit}/hot.json"
-        headers = {"User-Agent": "yt-shorts-pipeline/2.0"}
+        headers = {"User-Agent": "verticals/3.0"}
         r = requests.get(url, headers=headers, params={"limit": limit + 2}, timeout=10)
         r.raise_for_status()
         data = r.json()

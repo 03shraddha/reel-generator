@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-from pipeline.config import _get_key, extract_keywords, load_config
+from verticals.config import _get_key, extract_keywords, load_config
 
 
 class TestGetKey:
@@ -17,7 +17,7 @@ class TestGetKey:
         with patch.dict(os.environ, {}, clear=True):
             assert _get_key("NONEXISTENT_KEY_XYZ") == ""
 
-    @patch("pipeline.config.CONFIG_FILE")
+    @patch("verticals.config.CONFIG_FILE")
     def test_reads_from_config(self, mock_path):
         mock_path.exists.return_value = True
         mock_path.read_text.return_value = json.dumps({"MY_KEY": "from_config"})
@@ -42,18 +42,18 @@ class TestExtractKeywords:
 
 
 class TestLoadConfig:
-    @patch("pipeline.config.CONFIG_FILE")
+    @patch("verticals.config.CONFIG_FILE")
     def test_loads_valid_json(self, mock_path):
         mock_path.exists.return_value = True
         mock_path.read_text.return_value = json.dumps({"key": "value"})
         assert load_config() == {"key": "value"}
 
-    @patch("pipeline.config.CONFIG_FILE")
+    @patch("verticals.config.CONFIG_FILE")
     def test_returns_empty_for_missing(self, mock_path):
         mock_path.exists.return_value = False
         assert load_config() == {}
 
-    @patch("pipeline.config.CONFIG_FILE")
+    @patch("verticals.config.CONFIG_FILE")
     def test_returns_empty_for_invalid_json(self, mock_path):
         mock_path.exists.return_value = True
         mock_path.read_text.return_value = "not json"
