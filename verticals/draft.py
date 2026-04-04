@@ -7,6 +7,11 @@ visual vocabulary for b-roll prompts, and thumbnail guidance.
 
 import json
 
+# Hard limits to prevent oversized prompts and excessive API costs
+_MAX_TOPIC_LEN = 500
+_MAX_CHANNEL_CTX_LEN = 500
+_MAX_RESEARCH_LEN = 3000
+
 from .config import PLATFORM_CONFIGS
 from .llm import call_llm
 from .log import log
@@ -30,13 +35,21 @@ def generate_draft(
         platform: Target platform (shorts, reels, tiktok).
         provider: LLM provider (claude, gemini, openai, ollama).
     """
+    # Enforce input length limits
+    if len(news) > _MAX_TOPIC_LEN:
+        raise ValueError(f"Topic is too long ({len(news)} chars); maximum is {_MAX_TOPIC_LEN}.")
+    if channel_context and len(channel_context) > _MAX_CHANNEL_CTX_LEN:
+        channel_context = channel_context[:_MAX_CHANNEL_CTX_LEN]
+
     # Load niche intelligence
     profile = load_niche(niche)
     script_context = get_script_context(profile)
     visual_context = get_visual_context(profile)
 
-    # Research
+    # Research — truncate if excessively long to keep prompt size sane
     research = research_topic(news)
+    if len(research) > _MAX_RESEARCH_LEN:
+        research = research[:_MAX_RESEARCH_LEN] + "\n[research truncated]"
 
     # Platform config
     platform_key = platform if platform != "all" else "shorts"
@@ -98,11 +111,32 @@ RULES:
 - Use one of the CTA OPTIONS at the end
 - Never use any of the NEVER USE phrases
 - B-roll prompts must follow the visual guidance (style, mood, preferred subjects)
+- SCRIPT AUDIO CLARITY: Write the script for spoken audio. Never use abbreviations,
+  acronyms, or initialisms (e.g. write "kilometers per second" not "km/s", write "NASA"
+  only if it's a proper noun everyone recognises — otherwise spell it out). Spell out
+  all numbers, dates, and mission-specific terms in full so a text-to-speech engine
+  reads them correctly. Avoid special characters, hyphens used as dashes, and symbols.
+- B-ROLL MATCHING: Generate exactly 10 b-roll image prompts. Each prompt should visually
+  match a distinct segment of the script in order (opening, hook payoff, fact 1, fact 2,
+  fact 3, fact 4, fact 5, fact 6, emotional peak, closing/CTA). The images change every
+  ~2 seconds so make each prompt specific and vivid.
+- REAL PHOTOS: For any b-roll prompt featuring a real person (astronaut, scientist,
+  official, athlete, etc.), include their full name as the first words of the prompt
+  (e.g., "Reid Wiseman NASA astronaut portrait", "Christina Koch spacewalk ISS").
+  This enables Wikimedia Commons to find actual photos of that person.
+- NO REPEAT SUBJECTS: Every b-roll prompt must describe a visually distinct subject.
+  Never use the same person, location, or object twice across the 10 prompts.
+
+- CONTENT DENSITY: Every sentence must deliver a concrete fact, statistic, or insight.
+  No filler phrases ("In today's video", "Let me explain", "As we can see"). Pack maximum
+  information into minimum words. Aim for at least 3 verifiable facts per 30 seconds.
+- LANGUAGE: Use simple, direct language. Maximum 12 words per sentence. Write at a
+  grade-8 reading level. The viewer should learn something new every 5 seconds.
 
 Output JSON exactly:
 {{
   "script": "...",
-  "broll_prompts": ["prompt for frame 1", "prompt for frame 2", "prompt for frame 3"],
+  "broll_prompts": ["prompt 1", "prompt 2", "prompt 3", "prompt 4", "prompt 5", "prompt 6", "prompt 7", "prompt 8", "prompt 9", "prompt 10"],
   "youtube_title": "...",
   "youtube_description": "...",
   "youtube_tags": "tag1,tag2,tag3",
@@ -139,9 +173,9 @@ Output JSON exactly:
             draft[field] = str(draft[field])
     if "broll_prompts" in draft:
         if not isinstance(draft["broll_prompts"], list):
-            draft["broll_prompts"] = ["Cinematic landscape"] * 3
+            draft["broll_prompts"] = ["Cinematic landscape"] * 10
         else:
-            draft["broll_prompts"] = [str(p) for p in draft["broll_prompts"][:3]]
+            draft["broll_prompts"] = [str(p) for p in draft["broll_prompts"][:10]]
 
     # Append visual prompt suffix to b-roll prompts
     suffix = get_visual_prompt_suffix(profile)

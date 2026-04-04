@@ -31,7 +31,8 @@ class TestGetAudioDuration:
         mock_result.stdout = "10.0\n"
         mock_cmd.return_value = mock_result
 
-        get_audio_duration(Path("/tmp/audio.mp3"))
+        audio_path = Path("/tmp/audio.mp3")
+        get_audio_duration(audio_path)
         args = mock_cmd.call_args[0][0]
         assert "ffprobe" in args
-        assert "/tmp/audio.mp3" in args
+        assert str(audio_path) in args

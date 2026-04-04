@@ -6,6 +6,7 @@ macOS say is the last-resort fallback.
 """
 
 import os
+import sys
 from pathlib import Path
 
 import requests
@@ -31,22 +32,25 @@ EDGE_VOICES = {
     "ko": "ko-KR-InJoonNeural",
 }
 
+# Default speech rate — slightly accelerated for Shorts (fits more content, still clear)
+DEFAULT_EDGE_RATE = "+15%"
 
-async def _edge_tts_generate(text: str, voice: str, output_path: Path):
+
+async def _edge_tts_generate(text: str, voice: str, output_path: Path, rate: str = ""):
     """Generate audio via edge-tts (async)."""
     import edge_tts
-    communicate = edge_tts.Communicate(text, voice)
+    communicate = edge_tts.Communicate(text, voice, rate=rate or DEFAULT_EDGE_RATE)
     await communicate.save(str(output_path))
 
 
-def _generate_edge_tts(script: str, out_dir: Path, lang: str, voice_override: str = "") -> Path:
+def _generate_edge_tts(script: str, out_dir: Path, lang: str, voice_override: str = "", rate: str = "") -> Path:
     """Generate voiceover via Edge TTS (free Microsoft voices)."""
     import asyncio
 
     voice = voice_override or EDGE_VOICES.get(lang[:2], EDGE_VOICES["en"])
     out_path = out_dir / f"voiceover_{lang}.mp3"
 
-    log(f"Generating {lang} voiceover via Edge TTS (voice: {voice})...")
+    log(f"Generating {lang} voiceover via Edge TTS (voice: {voice}, rate: {rate or DEFAULT_EDGE_RATE})...")
 
     try:
         # Handle event loop — works whether called from sync or async context
@@ -57,12 +61,12 @@ def _generate_edge_tts(script: str, out_dir: Path, lang: str, voice_override: st
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(
                     asyncio.run,
-                    _edge_tts_generate(script, voice, out_path)
+                    _edge_tts_generate(script, voice, out_path, rate)
                 )
                 future.result(timeout=60)
         except RuntimeError:
             # No running loop, safe to use asyncio.run
-            asyncio.run(_edge_tts_generate(script, voice, out_path))
+            asyncio.run(_edge_tts_generate(script, voice, out_path, rate))
 
         log(f"Edge TTS voiceover saved: {out_path.name}")
         return out_path
@@ -123,9 +127,16 @@ def _generate_elevenlabs(
 
 def _generate_say(script: str, out_dir: Path) -> Path:
     """macOS 'say' fallback TTS."""
+    if sys.platform != "darwin":
+        raise RuntimeError(
+            "No TTS provider available. Edge TTS failed and 'say' is macOS-only.\n"
+            "Fix: pip install --upgrade edge-tts"
+        )
+    # Remove non-printable characters and cap length to prevent unexpected behaviour
+    sanitized = "".join(c for c in script if c.isprintable())[:5000]
     out_path = out_dir / "voiceover_say.aiff"
     mp3_path = out_dir / "voiceover_say.mp3"
-    run_cmd(["say", "-o", str(out_path), script])
+    run_cmd(["say", "-o", str(out_path), sanitized])
     run_cmd([
         "ffmpeg", "-i", str(out_path), "-acodec", "libmp3lame",
         str(mp3_path), "-y", "-loglevel", "quiet",
@@ -202,8 +213,9 @@ def generate_voiceover(
 
     if provider == "edge":
         voice_override = voice_config.get("voice_id", "")
+        rate = voice_config.get("rate", "")
         try:
-            return _generate_edge_tts(script, out_dir, lang, voice_override)
+            return _generate_edge_tts(script, out_dir, lang, voice_override, rate)
         except Exception as e:
             log(f"Edge TTS failed: {e}")
             # Fall through to next provider

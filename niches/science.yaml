@@ -44,11 +44,12 @@ visuals:
       - "stock photo scientist"
   prompt_suffix: "scientific visualization, awe inspiring, dramatic scale, NASA quality, cinematic"
 voice:
-  pace: "measured, approximately 150 words per minute"
+  pace: "energetic, approximately 165 words per minute"
   energy: "curious, building excitement"
+  rate: "+15%"
   suggested_voices:
     edge_tts:
-      en: "en-US-GuyNeural"
+      en: "en-US-AndrewNeural"
 captions:
   highlight_color: "#22D1EE"
   words_per_group: 4

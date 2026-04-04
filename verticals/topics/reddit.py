@@ -1,5 +1,7 @@
 """Reddit .json API topic source (hot/trending)."""
 
+import math
+
 import requests
 
 from .base import TopicCandidate, TopicSource
@@ -39,7 +41,6 @@ class RedditSource(TopicSource):
 
             score = d.get("score", 0)
             # Normalize score: 10K+ = 1.0, logarithmic scale
-            import math
             normalized = min(1.0, math.log10(max(score, 1)) / 4)
 
             topics.append(TopicCandidate(

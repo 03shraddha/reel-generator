@@ -75,4 +75,4 @@ class PipelineState:
 
     def save(self, path: Path):
         """Write the draft (with embedded state) to disk."""
-        path.write_text(json.dumps(self.draft, indent=2, ensure_ascii=False))
+        path.write_text(json.dumps(self.draft, indent=2, ensure_ascii=False), encoding="utf-8")

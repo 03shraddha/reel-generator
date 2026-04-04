@@ -18,8 +18,15 @@ def _has_ass_filter() -> bool:
         return False
 
 
-def _whisper_word_timestamps(audio_path: Path, lang: str = "en") -> list[dict]:
+def _whisper_word_timestamps(audio_path: Path, lang: str = "en", script: str = "") -> list[dict]:
     """Get word-level timestamps from Whisper.
+
+    Args:
+        audio_path: Path to audio file.
+        lang: Language code.
+        script: Original script text. When provided, passed to Whisper as
+                initial_prompt so it anchors transcription to the correct words
+                instead of mishearing synthesized speech.
 
     Returns list of {"word": str, "start": float, "end": float}.
     """
@@ -31,11 +38,15 @@ def _whisper_word_timestamps(audio_path: Path, lang: str = "en") -> list[dict]:
 
     log("Running Whisper for word-level timestamps...")
     model = whisper.load_model("base")
-    result = model.transcribe(
-        str(audio_path),
-        language=lang[:2],
-        word_timestamps=True,
-    )
+    transcribe_kwargs = {
+        "language": lang[:2],
+        "word_timestamps": True,
+    }
+    # Providing the script as initial_prompt significantly reduces transcription
+    # errors on synthesized (TTS) audio — Whisper stays anchored to the right words.
+    if script:
+        transcribe_kwargs["initial_prompt"] = script[:224]  # Whisper prompt limit ~224 tokens
+    result = model.transcribe(str(audio_path), **transcribe_kwargs)
 
     words = []
     for segment in result.get("segments", []):
@@ -66,7 +77,7 @@ def _format_ass_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def _generate_ass(words: list[dict], output_path: Path, video_width: int = 1080, video_height: int = 1920, highlight_color: str = "#FFFF00", group_size: int = 4):
+def _generate_ass(words: list[dict], output_path: Path, video_width: int = 1080, video_height: int = 1920, highlight_color: str = "#FFFF00", group_size: int = 4, font_family: str = "Special Elite"):
     """Generate ASS subtitle file with word-by-word color highlighting.
 
     White text for inactive words, yellow for current word.
@@ -83,7 +94,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,3,3,0,2,40,40,{margin_v},1
+Style: Default,{font_family},72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,3,3,0,2,40,40,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -165,12 +176,24 @@ def generate_captions(
     lang: str = "en",
     highlight_color: str = "#FFFF00",
     words_per_group: int = 4,
+    font_family: str = "Special Elite",
+    script: str = "",
 ) -> dict:
     """Generate captions: ASS (for burn-in) + SRT (for YouTube upload).
 
+    Args:
+        audio_path: Path to voiceover audio.
+        work_dir: Directory to write caption files.
+        lang: Language code.
+        highlight_color: Hex color for the active (highlighted) word.
+        words_per_group: Words shown per subtitle line.
+        font_family: Font for ASS burn-in captions.
+        script: Original script text. Passed to Whisper as initial_prompt to
+                improve transcription accuracy on synthesized speech.
+
     Returns dict with keys: srt_path, ass_path, words (for music ducking).
     """
-    words = _whisper_word_timestamps(audio_path, lang)
+    words = _whisper_word_timestamps(audio_path, lang, script=script)
 
     result = {"words": words}
 
@@ -203,7 +226,7 @@ def generate_captions(
 
     # Generate ASS for burn-in (niche-aware highlight color)
     ass_path = work_dir / f"captions_{lang}.ass"
-    _generate_ass(words, ass_path, highlight_color=highlight_color, group_size=words_per_group)
+    _generate_ass(words, ass_path, highlight_color=highlight_color, group_size=words_per_group, font_family=font_family)
     result["ass_path"] = str(ass_path)
 
     return result

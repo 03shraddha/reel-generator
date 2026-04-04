@@ -1,6 +1,7 @@
-"""Gemini Imagen b-roll generation + Ken Burns animation."""
+"""B-roll image generation (gpt-image-1 / Gemini) + Ken Burns animation."""
 
 import base64
+import os
 from pathlib import Path
 
 import requests
@@ -9,14 +10,70 @@ from PIL import Image
 from .config import VIDEO_WIDTH, VIDEO_HEIGHT, get_gemini_key, run_cmd
 from .log import log
 from .retry import with_retry
+from .stock_photos import fetch_real_photo, extract_keyword
 
+
+# ─────────────────────────────────────────────────────
+# OpenAI gpt-image-1 — primary provider when key available
+# ─────────────────────────────────────────────────────
+
+@with_retry(max_retries=3, base_delay=2.0)
+def _generate_image_openai(prompt: str, output_path: Path, api_key: str):
+    """Generate image via OpenAI gpt-image-1 (portrait 1024x1536)."""
+    r = requests.post(
+        "https://api.openai.com/v1/images/generations",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": "gpt-image-1",
+            "prompt": prompt,
+            "size": "1024x1536",   # portrait — closest to 9:16
+            "n": 1,
+            "quality": "medium",   # balance cost vs quality
+        },
+        timeout=120,
+        verify=True,
+    )
+    if r.status_code != 200:
+        try:
+            detail = r.json().get("error", {}).get("message", r.text[:300])
+        except Exception:
+            detail = r.text[:300]
+        raise RuntimeError(f"OpenAI Images API {r.status_code}: {detail}")
+
+    data = r.json()
+    # gpt-image-1 returns base64 by default (no response_format needed)
+    img_b64 = data["data"][0].get("b64_json") or data["data"][0].get("url")
+    if not img_b64:
+        raise RuntimeError("No image data in OpenAI response")
+
+    if data["data"][0].get("b64_json"):
+        output_path.write_bytes(base64.b64decode(img_b64))
+    else:
+        # URL fallback — download it
+        img_r = requests.get(img_b64, timeout=60, verify=True)
+        img_r.raise_for_status()
+        output_path.write_bytes(img_r.content)
+
+
+def _get_openai_key() -> str:
+    """Read OpenAI key from env or config.json."""
+    from .config import load_config
+    return os.environ.get("OPENAI_API_KEY") or load_config().get("OPENAI_API_KEY", "")
+
+
+# ─────────────────────────────────────────────────────
+# Gemini Imagen — fallback provider
+# ─────────────────────────────────────────────────────
 
 @with_retry(max_retries=3, base_delay=2.0)
 def _generate_image_gemini(prompt: str, output_path: Path, api_key: str):
     """Generate image via Gemini native image generation (free tier compatible)."""
     url = (
         "https://generativelanguage.googleapis.com/v1beta"
-        "/models/gemini-2.0-flash-exp-image-generation:generateContent"
+        "/models/gemini-2.0-flash-preview-image-generation:generateContent"
     )
     body = {
         "contents": [{"parts": [{"text": f"Generate an image: {prompt}"}]}],
@@ -25,6 +82,7 @@ def _generate_image_gemini(prompt: str, output_path: Path, api_key: str):
     r = requests.post(
         url, json=body, timeout=90,
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+        verify=True,
     )
     if r.status_code != 200:
         try:
@@ -51,34 +109,73 @@ def _fallback_frame(i: int, out_dir: Path) -> Path:
     return path
 
 
+def _resize_to_portrait(img_path: Path):
+    """Resize/crop an image to 9:16 portrait (VIDEO_WIDTH x VIDEO_HEIGHT) in place."""
+    img = Image.open(img_path).convert("RGB")
+    target_w, target_h = VIDEO_WIDTH, VIDEO_HEIGHT
+    orig_w, orig_h = img.size
+    scale = max(target_w / orig_w, target_h / orig_h)
+    new_w, new_h = int(orig_w * scale), int(orig_h * scale)
+    img = img.resize((new_w, new_h), Image.LANCZOS)
+    left = (new_w - target_w) // 2
+    top = (new_h - target_h) // 2
+    img = img.crop((left, top, left + target_w, top + target_h))
+    img.save(img_path)
+
+
 def generate_broll(prompts: list, out_dir: Path) -> list[Path]:
-    """Generate 3 b-roll frames via Gemini Imagen, with fallback."""
-    api_key = get_gemini_key()
+    """Generate up to 10 b-roll frames — tries real photos first, then gpt-image-1, then Gemini, then solid-colour fallback."""
+    openai_key = _get_openai_key()
     frames = []
+    # Tracks Wikimedia URLs already downloaded so no photo repeats across frames
+    used_urls: set = set()
 
-    for i, prompt in enumerate(prompts[:3]):
+    for i, prompt in enumerate(prompts[:10]):
         out_path = out_dir / f"broll_{i}.png"
-        log(f"Generating b-roll frame {i+1}/3 via Gemini Imagen...")
+        generated = False
 
-        try:
-            _generate_image_gemini(prompt, out_path, api_key)
+        # 1. Try real photo from Wikimedia Commons (free, no key needed)
+        keyword = extract_keyword(prompt)
+        if keyword:
+            log(f"B-roll frame {i+1}/{len(prompts[:10])}: fetching real photo for '{keyword}'...")
+            if fetch_real_photo(keyword, out_path, used_urls=used_urls):
+                _resize_to_portrait(out_path)
+                frames.append(out_path)
+                generated = True
 
-            # Resize/crop to 9:16 portrait
-            img = Image.open(out_path).convert("RGB")
-            target_w, target_h = VIDEO_WIDTH, VIDEO_HEIGHT
-            orig_w, orig_h = img.size
-            scale = max(target_w / orig_w, target_h / orig_h)
-            new_w, new_h = int(orig_w * scale), int(orig_h * scale)
-            img = img.resize((new_w, new_h), Image.LANCZOS)
-            left = (new_w - target_w) // 2
-            top = (new_h - target_h) // 2
-            img = img.crop((left, top, left + target_w, top + target_h))
-            img.save(out_path)
-            frames.append(out_path)
+        # 2. Try OpenAI gpt-image-1 (AI fallback)
+        if not generated and openai_key:
+            log(f"Generating b-roll frame {i+1}/{len(prompts[:10])} via gpt-image-1...")
+            try:
+                _generate_image_openai(prompt, out_path, openai_key)
+                _resize_to_portrait(out_path)
+                frames.append(out_path)
+                generated = True
+            except Exception as e:
+                log(f"gpt-image-1 frame {i+1} failed: {e} — trying Gemini")
 
-        except Exception as e:
-            log(f"Frame {i+1} failed: {e} — using fallback")
+        # 3. Try Gemini Imagen
+        if not generated:
+            gemini_key = get_gemini_key()
+            if gemini_key:
+                log(f"Generating b-roll frame {i+1}/{len(prompts[:10])} via Gemini Imagen...")
+                try:
+                    _generate_image_gemini(prompt, out_path, gemini_key)
+                    _resize_to_portrait(out_path)
+                    frames.append(out_path)
+                    generated = True
+                except Exception as e:
+                    log(f"Gemini frame {i+1} failed: {e} — using fallback")
+
+        if not generated:
+            log(f"Frame {i+1}: using solid-colour fallback")
             frames.append(_fallback_frame(i, out_dir))
+
+    # Validation: enforce minimum 10 frames (pad with fallback if needed)
+    while len(frames) < 10:
+        idx = len(frames)
+        log(f"Padding to meet 10-image minimum: adding fallback frame {idx+1}")
+        frames.append(_fallback_frame(idx, out_dir))
 
     return frames
 

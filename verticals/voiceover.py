@@ -1,6 +1,7 @@
-"""Legacy voiceover module — delegates to tts.py.
+"""Deprecated: use tts.py directly.
 
-Kept for backward compatibility with existing produce/assemble calls.
+This module is a compatibility shim only. No new code should import from here.
+Import generate_voiceover from verticals.tts instead.
 """
 
 from pathlib import Path

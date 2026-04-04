@@ -1,8 +1,8 @@
 """Key resolution, paths, constants, and setup wizard."""
 
+import getpass
 import json
 import os
-import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -50,6 +50,28 @@ def write_secret_file(path: Path, content: str):
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(content)
+
+
+def _inject_ffmpeg_path():
+    """Add bundled or WinGet-installed ffmpeg to PATH if not already present."""
+    import shutil
+    if shutil.which("ffmpeg"):
+        return  # already on PATH
+
+    # Common WinGet install location on Windows
+    winget_ffmpeg = (
+        Path.home()
+        / "AppData/Local/Microsoft/WinGet/Packages"
+    )
+    if winget_ffmpeg.exists():
+        for pkg_dir in winget_ffmpeg.glob("Gyan.FFmpeg*"):
+            for build_dir in sorted(pkg_dir.glob("ffmpeg-*"), reverse=True):
+                bin_dir = build_dir / "bin"
+                if (bin_dir / "ffmpeg.exe").exists():
+                    os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+                    return
+
+_inject_ffmpeg_path()
 
 
 def run_cmd(cmd, check=True, capture=False, **kwargs):
@@ -251,21 +273,24 @@ def run_setup():
 
     config = {}
 
+    print("  Note: keys are stored in plaintext with 0600 permissions.")
+    print("  Use environment variables (ANTHROPIC_API_KEY etc.) for stricter security.\n")
+
     print("1. Anthropic API key (required — used for Claude script generation)")
     print("   Get yours at: https://console.anthropic.com/settings/keys")
-    key = input("   ANTHROPIC_API_KEY: ").strip()
+    key = getpass.getpass("   ANTHROPIC_API_KEY (input hidden): ").strip()
     if key:
         config["ANTHROPIC_API_KEY"] = key
 
     print("\n2. ElevenLabs API key (optional — fallback to macOS 'say' if omitted)")
     print("   Pro account required for server use. https://elevenlabs.io/settings/api-keys")
-    key = input("   ELEVENLABS_API_KEY (press Enter to skip): ").strip()
+    key = getpass.getpass("   ELEVENLABS_API_KEY (press Enter to skip, input hidden): ").strip()
     if key:
         config["ELEVENLABS_API_KEY"] = key
 
     print("\n3. Google Gemini API key (required — used for AI b-roll image generation)")
     print("   Get yours at: https://aistudio.google.com/apikey")
-    key = input("   GEMINI_API_KEY: ").strip()
+    key = getpass.getpass("   GEMINI_API_KEY (input hidden): ").strip()
     if key:
         config["GEMINI_API_KEY"] = key
 

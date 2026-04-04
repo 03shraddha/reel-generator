@@ -135,6 +135,7 @@ def _call_gemini(prompt: str, max_tokens: int) -> str:
     r = requests.post(
         url, json=body, timeout=60,
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+        verify=True,
     )
     if r.status_code != 200:
         raise RuntimeError(f"Gemini API {r.status_code}: {r.text[:300]}")
@@ -169,6 +170,7 @@ def _call_openai(prompt: str, max_tokens: int) -> str:
             "messages": [{"role": "user", "content": prompt}],
         },
         timeout=60,
+        verify=True,
     )
     if r.status_code != 200:
         raise RuntimeError(f"OpenAI API {r.status_code}: {r.text[:300]}")

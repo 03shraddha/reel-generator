@@ -5,6 +5,7 @@ voice pace/energy, caption styling, music mood, thumbnail strategy, and
 topic discovery sources.
 """
 
+import os
 import yaml
 from pathlib import Path
 from typing import Any
@@ -22,10 +23,23 @@ def load_niche(name: str = "general") -> dict:
     """Load a niche profile by name. Returns general fallback if not found."""
     name = (name or "general").strip().lower()
 
+    # Reject names that could navigate outside NICHES_DIR
+    if "/" in name or "\\" in name or name.startswith("."):
+        log(f"Unsafe niche name '{name}', falling back to 'general'")
+        return load_niche("general") if name != "general" else _minimal_profile("general")
+
     if name in _cache:
         return _cache[name]
 
     profile_path = NICHES_DIR / f"{name}.yaml"
+
+    # Verify the resolved path is actually inside NICHES_DIR (defence-in-depth)
+    niches_resolved = str(NICHES_DIR.resolve())
+    profile_resolved = str(profile_path.resolve())
+    if not profile_resolved.startswith(niches_resolved + os.sep) and profile_resolved != niches_resolved:
+        log(f"Path traversal attempt detected for niche '{name}', falling back to 'general'")
+        return load_niche("general") if name != "general" else _minimal_profile("general")
+
     if not profile_path.exists():
         log(f"Niche profile '{name}' not found at {profile_path}")
         if name != "general":
@@ -146,16 +160,6 @@ def get_visual_prompt_suffix(profile: dict) -> str:
     return visuals.get("prompt_suffix", "photorealistic, cinematic lighting, high quality")
 
 
-def get_visual_subjects(profile: dict) -> dict:
-    """Get preferred and avoided visual subjects."""
-    visuals = profile.get("visuals", {})
-    subjects = visuals.get("subjects", {})
-    return {
-        "prefer": subjects.get("prefer", []),
-        "avoid": subjects.get("avoid", []),
-    }
-
-
 def get_voice_config(profile: dict, provider: str = "edge_tts", lang: str = "en") -> dict:
     """Get voice configuration for the specified provider and language."""
     voice = profile.get("voice", {})
@@ -165,6 +169,7 @@ def get_voice_config(profile: dict, provider: str = "edge_tts", lang: str = "en"
         "pace": voice.get("pace", ""),
         "energy": voice.get("energy", ""),
         "style": voice.get("style", ""),
+        "rate": voice.get("rate", ""),  # Edge TTS speech rate e.g. "+15%"
     }
 
     provider_voices = suggested.get(provider, {})
@@ -185,7 +190,7 @@ def get_caption_config(profile: dict) -> dict:
     defaults = {
         "highlight_color": "#FFFF00",
         "text_color": "#FFFFFF",
-        "font_family": "Arial",
+        "font_family": "Special Elite",
         "font_size": 72,
         "font_weight": "bold",
         "position": "lower_third",
@@ -194,6 +199,9 @@ def get_caption_config(profile: dict) -> dict:
     }
     captions = profile.get("captions", {})
     defaults.update(captions)
+    allowed = ["Special Elite", "Courier Prime", "American Typewriter"]
+    if defaults.get("font_family") not in allowed:
+        defaults["font_family"] = "Courier Prime"
     return defaults
 
 
@@ -209,16 +217,6 @@ def get_music_config(profile: dict) -> dict:
     music = profile.get("music", {})
     defaults.update(music)
     return defaults
-
-
-def get_thumbnail_config(profile: dict) -> dict:
-    """Get thumbnail style guidance from the niche profile."""
-    return profile.get("thumbnail", {})
-
-
-def get_discovery_config(profile: dict) -> dict:
-    """Get topic discovery sources from the niche profile."""
-    return profile.get("discovery", {})
 
 
 def list_niches() -> list[str]:

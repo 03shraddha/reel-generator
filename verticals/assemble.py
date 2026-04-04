@@ -1,6 +1,42 @@
 """ffmpeg video assembly — frames + voiceover + music + captions."""
 
+import os
+import re
+import sys
 from pathlib import Path
+
+
+def _ass_no_spaces(ass_path: Path, job_id: str) -> Path:
+    """Return a copy of the ASS file at a path guaranteed to have no spaces.
+
+    FFmpeg's filter parser cannot handle spaces (or Windows colon paths) in
+    the ass= filter value, even with escaping. Copying to a short temp path
+    avoids the issue entirely.
+    """
+    import shutil
+
+    if sys.platform != "win32":
+        return ass_path
+
+    # Try candidates in order until we find a writable dir with no spaces
+    candidates = [
+        Path("C:/Windows/Temp"),
+        Path(os.environ.get("SYSTEMDRIVE", "C:") + "/tmp"),
+        Path("D:/tmp"),
+    ]
+    for d in candidates:
+        if " " in str(d):
+            continue
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            dest = d / f"captions_{job_id}.ass"
+            shutil.copy2(ass_path, dest)
+            return dest
+        except Exception:
+            continue
+
+    # Fallback: return original path (may fail if it has spaces)
+    return ass_path
 
 from .broll import animate_frame
 from .config import MEDIA_DIR, run_cmd
@@ -30,14 +66,19 @@ def assemble_video(
     """Assemble final video from frames, voiceover, captions, and music."""
     log("Assembling video...")
     duration = get_audio_duration(voiceover)
-    per_frame = duration / len(frames)
+
+    # Cut every 2 seconds — cycle through available frames to fill the full duration
+    per_clip = 2.0
+    n_clips = max(len(frames), round(duration / per_clip))
+    clip_sequence = [frames[i % len(frames)] for i in range(n_clips)]
+    clip_dur = duration / n_clips  # actual duration per clip
     effects = ["zoom_in", "pan_right", "zoom_out"]
 
-    # Animate each frame with Ken Burns effect
+    # Animate each clip with alternating Ken Burns effects
     animated = []
-    for i, frame in enumerate(frames):
+    for i, frame in enumerate(clip_sequence):
         anim = out_dir / f"anim_{i}.mp4"
-        animate_frame(frame, anim, per_frame + 0.1, effects[i % len(effects)])
+        animate_frame(frame, anim, clip_dur + 0.1, effects[i % len(effects)])
         animated.append(anim)
 
     # Concat animated segments (escape single quotes for ffmpeg concat demuxer)
@@ -57,11 +98,18 @@ def assemble_video(
     out_path = MEDIA_DIR / f"verticals_{job_id}_{lang}.mp4"
 
     # Determine video filter (captions via ASS)
+    # On Windows, FFmpeg's filter parser chokes on any path containing `:` (drive
+    # letter) even when escaped. Work-around: copy the ASS to a temp dir, then
+    # run FFmpeg with cwd=that dir and reference only the bare filename in the
+    # filter — no colon, no slashes, no spaces, nothing to escape.
     vf_parts = []
+    ffmpeg_cwd = None
     if ass_path and Path(ass_path).exists():
-        # Escape special chars in path for ffmpeg filter
-        escaped_ass = str(ass_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-        vf_parts.append(f"ass={escaped_ass}")
+        if re.search(r'[;,\[\]@]', str(ass_path)):
+            raise ValueError(f"ASS subtitle path contains unsafe characters: {ass_path}")
+        safe_ass = _ass_no_spaces(Path(ass_path), job_id)
+        vf_parts.append(f"ass={safe_ass.name}")  # bare filename only
+        ffmpeg_cwd = str(safe_ass.parent)          # run ffmpeg from that dir
     vf = ",".join(vf_parts) if vf_parts else None
 
     if music_path and Path(music_path).exists():
@@ -104,6 +152,6 @@ def assemble_video(
             str(out_path), "-y", "-loglevel", "quiet",
         ]
 
-    run_cmd(cmd)
+    run_cmd(cmd, cwd=ffmpeg_cwd)
     log(f"Video assembled: {out_path}")
     return out_path
