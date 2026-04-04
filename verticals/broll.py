@@ -1,4 +1,4 @@
-"""B-roll image generation (gpt-image-1 / Gemini) + Ken Burns animation."""
+"""B-roll image generation (gpt-image-1 primary, Gemini fallback) + Ken Burns animation."""
 
 import base64
 import os
@@ -10,7 +10,6 @@ from PIL import Image
 from .config import VIDEO_WIDTH, VIDEO_HEIGHT, get_gemini_key, run_cmd
 from .log import log
 from .retry import with_retry
-from .stock_photos import fetch_real_photo, extract_keyword
 
 
 # ─────────────────────────────────────────────────────
@@ -124,27 +123,16 @@ def _resize_to_portrait(img_path: Path):
 
 
 def generate_broll(prompts: list, out_dir: Path) -> list[Path]:
-    """Generate up to 10 b-roll frames — tries real photos first, then gpt-image-1, then Gemini, then solid-colour fallback."""
+    """Generate up to 10 b-roll frames — gpt-image-1 primary, Gemini fallback, solid-colour last resort."""
     openai_key = _get_openai_key()
     frames = []
-    # Tracks Wikimedia URLs already downloaded so no photo repeats across frames
-    used_urls: set = set()
 
     for i, prompt in enumerate(prompts[:10]):
         out_path = out_dir / f"broll_{i}.png"
         generated = False
 
-        # 1. Try real photo from Wikimedia Commons (free, no key needed)
-        keyword = extract_keyword(prompt)
-        if keyword:
-            log(f"B-roll frame {i+1}/{len(prompts[:10])}: fetching real photo for '{keyword}'...")
-            if fetch_real_photo(keyword, out_path, used_urls=used_urls):
-                _resize_to_portrait(out_path)
-                frames.append(out_path)
-                generated = True
-
-        # 2. Try OpenAI gpt-image-1 (AI fallback)
-        if not generated and openai_key:
+        # 1. Try OpenAI gpt-image-1
+        if openai_key:
             log(f"Generating b-roll frame {i+1}/{len(prompts[:10])} via gpt-image-1...")
             try:
                 _generate_image_openai(prompt, out_path, openai_key)
@@ -154,7 +142,7 @@ def generate_broll(prompts: list, out_dir: Path) -> list[Path]:
             except Exception as e:
                 log(f"gpt-image-1 frame {i+1} failed: {e} — trying Gemini")
 
-        # 3. Try Gemini Imagen
+        # 2. Try Gemini Imagen
         if not generated:
             gemini_key = get_gemini_key()
             if gemini_key:

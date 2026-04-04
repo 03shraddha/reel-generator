@@ -1,14 +1,19 @@
-"""Thumbnail generation — Gemini Imagen (16:9) + Pillow text overlay."""
+"""Thumbnail generation — Gemini Imagen / gpt-image-1 (16:9) + Pillow text overlay."""
 
 import base64
+import os
 from pathlib import Path
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-from .config import get_gemini_key
+from .config import get_gemini_key, load_config
 from .log import log
 from .retry import with_retry
+
+
+def _get_openai_key() -> str:
+    return os.environ.get("OPENAI_API_KEY") or load_config().get("OPENAI_API_KEY", "")
 
 THUMB_WIDTH = 1280
 THUMB_HEIGHT = 720
@@ -43,6 +48,36 @@ def _generate_thumb_image(prompt: str, output_path: Path, api_key: str):
             output_path.write_bytes(base64.b64decode(img_b64))
             return
     raise RuntimeError("No image in Gemini response")
+
+
+@with_retry(max_retries=3, base_delay=2.0)
+def _generate_thumb_image_openai(prompt: str, output_path: Path, api_key: str):
+    """Generate a 16:9 thumbnail via OpenAI gpt-image-1 (landscape 1536x1024)."""
+    r = requests.post(
+        "https://api.openai.com/v1/images/generations",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "model": "gpt-image-1",
+            "prompt": f"16:9 landscape YouTube thumbnail: {prompt}",
+            "n": 1,
+            "size": "1536x1024",  # closest landscape option for gpt-image-1
+            "quality": "medium",
+        },
+        timeout=120,
+    )
+    if r.status_code != 200:
+        try:
+            detail = r.json().get("error", {}).get("message", r.text[:200])
+        except Exception:
+            detail = r.text[:200]
+        raise RuntimeError(f"OpenAI API {r.status_code}: {detail}")
+
+    data = r.json()
+    img_b64 = (data.get("data") or [{}])[0].get("b64_json")
+    if img_b64:
+        output_path.write_bytes(base64.b64decode(img_b64))
+        return
+    raise RuntimeError("No image data in OpenAI response")
 
 
 def _overlay_title(image_path: Path, title: str, output_path: Path):
@@ -114,12 +149,13 @@ def _wrap_text(draw: ImageDraw.Draw, text: str, font, max_width: int) -> list[st
 
 
 def generate_thumbnail(draft: dict, out_dir: Path) -> Path:
-    """Generate a YouTube thumbnail with Gemini + text overlay.
+    """Generate a YouTube thumbnail with Gemini (primary) or gpt-image-1 (fallback) + text overlay.
 
     Uses the thumbnail_prompt from the draft, overlays the video title.
     Returns path to the final thumbnail PNG.
     """
-    api_key = get_gemini_key()
+    gemini_key = get_gemini_key()
+    openai_key = _get_openai_key()
     prompt = draft.get("thumbnail_prompt", "Cinematic YouTube thumbnail")
     title = draft.get("youtube_title", draft.get("news", ""))
     job_id = draft.get("job_id", "unknown")
@@ -127,8 +163,22 @@ def generate_thumbnail(draft: dict, out_dir: Path) -> Path:
     raw_path = out_dir / f"thumb_raw_{job_id}.png"
     final_path = out_dir / f"thumb_{job_id}.png"
 
-    log("Generating thumbnail via Gemini Imagen...")
-    _generate_thumb_image(prompt, raw_path, api_key)
+    generated = False
+    if gemini_key:
+        try:
+            log("Generating thumbnail via Gemini Imagen...")
+            _generate_thumb_image(prompt, raw_path, gemini_key)
+            generated = True
+        except Exception as e:
+            log(f"Gemini thumbnail failed: {e} — trying gpt-image-1")
+
+    if not generated and openai_key:
+        log("Generating thumbnail via gpt-image-1...")
+        _generate_thumb_image_openai(prompt, raw_path, openai_key)
+        generated = True
+
+    if not generated:
+        raise RuntimeError("No image provider available for thumbnail (set GEMINI_API_KEY or OPENAI_API_KEY)")
 
     log("Adding title overlay...")
     _overlay_title(raw_path, title, final_path)

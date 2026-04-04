@@ -172,6 +172,14 @@ def _chunk_text(text: str, max_chars: int = _SARVAM_MAX_CHARS) -> list[str]:
     return chunks
 
 
+def _parse_pace(val, default: float = 1.15) -> float:
+    """Convert pace value to float — YAML niche profiles store it as a descriptive string."""
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 @with_retry(max_retries=3, base_delay=2.0)
 def _call_sarvam(text: str, lang_code: str, speaker: str, api_key: str,
                  pace: float = 1.15, temperature: float = 0.7) -> bytes:
@@ -360,7 +368,7 @@ def generate_voiceover(
             return _generate_sarvam(
                 script, out_dir, lang,
                 speaker=voice_config.get("voice_id", ""),
-                pace=voice_config.get("pace", 1.15),
+                pace=_parse_pace(voice_config.get("pace", 1.15)),
                 temperature=voice_config.get("temperature", 0.7),
             )
         except Exception as e:

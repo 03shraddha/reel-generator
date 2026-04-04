@@ -16,7 +16,7 @@ that one command does everything below, automatically.
 |-------|-------------|
 | **research** | searches duckduckgo for real facts about your topic |
 | **script** | an llm writes a 60–90 second hook-driven voiceover script |
-| **b-roll** | pulls real photos from wikimedia commons, falls back to ai-generated images |
+| **b-roll** | generates ai images via gpt-image-1 (primary) → gemini imagen (fallback) → solid colour |
 | **voiceover** | text-to-speech via sarvam ai (indian voices), elevenlabs (premium), or edge tts (free) |
 | **captions** | whisper generates word-level timestamps, burns animated subtitles into video |
 | **music** | picks a mood-matched background track and auto-ducks under the voice |
@@ -47,6 +47,8 @@ ELEVENLABS_API_KEY=
 SARVAM_API_KEY=          # enables indian-language voices (auto-selected when set)
 ```
 
+the pipeline auto-loads `.env` at startup — no `python-dotenv` install or manual `export` needed.
+
 or use the first-run setup wizard, or create `~/.verticals/config.json` manually.
 
 > ⚠️ never commit `.env` or `config.json` — both are already in `.gitignore`
@@ -70,14 +72,18 @@ python -m verticals produce --draft ~/.verticals/drafts/<id>.json --lang en
 | key | what it's for | free tier? |
 |-----|--------------|------------|
 | `ANTHROPIC_API_KEY` | script writing (claude) | no — ~$0.02/video |
-| `GEMINI_API_KEY` | script or image fallback | yes |
-| `OPENAI_API_KEY` | ai image generation (gpt-image-1) | no — ~$0.04/video |
+| `GEMINI_API_KEY` | script writing fallback + thumbnail (primary) + b-roll (fallback) | yes |
+| `OPENAI_API_KEY` | b-roll images (primary via gpt-image-1) + thumbnail (fallback) | no — ~$0.04/video |
 | `SARVAM_API_KEY` | indian-language voiceover (bulbul:v3) | free tier available |
 | `ELEVENLABS_API_KEY` | premium voiceover | optional |
 
+**image generation priority:**
+- b-roll: `gpt-image-1` → `gemini imagen` → solid-colour fallback
+- thumbnail: `gemini imagen` → `gpt-image-1` fallback
+
 tts priority when auto-detected: `sarvam` → `elevenlabs` → `edge` → `say`
 
-edge tts (voiceover) and wikimedia (photos) are completely free with no key needed.
+edge tts (voiceover) is completely free with no key needed.
 
 ---
 
@@ -91,7 +97,7 @@ python -m verticals run \
   --voice edge
 ```
 
-uses gemini free tier for the script + edge tts for voice + wikimedia for photos. total cost: $0.
+uses gemini free tier for the script + b-roll images + edge tts for voice. total cost: $0.
 
 ---
 
@@ -106,6 +112,8 @@ python -m verticals run --topic "headline" --niche cooking
 ```
 
 or build your own by dropping a yaml file in `niches/`. see `niches/tech.yaml` for the format.
+
+> the `pace` field in a niche yaml can be a plain number (`1.15`) or a descriptive string (`"moderate, approximately 150 words per minute"`) — the pipeline coerces it to a float automatically before passing it to the sarvam api.
 
 ---
 
