@@ -17,7 +17,7 @@ that one command does everything below, automatically.
 | **research** | searches duckduckgo for real facts about your topic |
 | **script** | an llm writes a 60–90 second hook-driven voiceover script |
 | **b-roll** | pulls real photos from wikimedia commons, falls back to ai-generated images |
-| **voiceover** | text-to-speech via edge tts (free) or elevenlabs (premium) |
+| **voiceover** | text-to-speech via sarvam ai (indian voices), elevenlabs (premium), or edge tts (free) |
 | **captions** | whisper generates word-level timestamps, burns animated subtitles into video |
 | **music** | picks a mood-matched background track and auto-ducks under the voice |
 | **assemble** | ffmpeg combines everything with ken burns zoom/pan effects |
@@ -36,17 +36,20 @@ pip install -r requirements.txt
 
 **step 2 — add your api keys**
 
-the first run launches a setup wizard. or create `~/.verticals/config.json` manually:
+create a `.env` file in the project root (already gitignored):
 
-```json
-{
-  "ANTHROPIC_API_KEY": "your-key-here",
-  "GEMINI_API_KEY": "your-key-here",
-  "OPENAI_API_KEY": "your-key-here"
-}
+```env
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+OPENAI_API_KEY=
+NEWSAPI_KEY=
+ELEVENLABS_API_KEY=
+SARVAM_API_KEY=          # enables indian-language voices (auto-selected when set)
 ```
 
-> ⚠️ never commit this file — it's already in `.gitignore`
+or use the first-run setup wizard, or create `~/.verticals/config.json` manually.
+
+> ⚠️ never commit `.env` or `config.json` — both are already in `.gitignore`
 
 **step 3 — generate a video**
 ```bash
@@ -69,7 +72,10 @@ python -m verticals produce --draft ~/.verticals/drafts/<id>.json --lang en
 | `ANTHROPIC_API_KEY` | script writing (claude) | no — ~$0.02/video |
 | `GEMINI_API_KEY` | script or image fallback | yes |
 | `OPENAI_API_KEY` | ai image generation (gpt-image-1) | no — ~$0.04/video |
+| `SARVAM_API_KEY` | indian-language voiceover (bulbul:v3) | free tier available |
 | `ELEVENLABS_API_KEY` | premium voiceover | optional |
+
+tts priority when auto-detected: `sarvam` → `elevenlabs` → `edge` → `say`
 
 edge tts (voiceover) and wikimedia (photos) are completely free with no key needed.
 
@@ -109,7 +115,7 @@ or build your own by dropping a yaml file in `niches/`. see `niches/tech.yaml` f
 |------|-------------|
 | `--niche NAME` | pick a niche profile (default: general) |
 | `--provider NAME` | llm: claude, gemini, openai, ollama |
-| `--voice NAME` | tts: edge, elevenlabs, say |
+| `--voice NAME` | tts: sarvam, elevenlabs, edge, say |
 | `--lang CODE` | language: en, hi, es, pt, de, fr |
 | `--dry-run` | write the script only, skip video production |
 | `--force` | redo all stages even if already done |

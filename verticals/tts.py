@@ -11,7 +11,7 @@ from pathlib import Path
 
 import requests
 
-from .config import VOICE_ID_EN, VOICE_ID_HI, get_elevenlabs_key, run_cmd
+from .config import VOICE_ID_EN, VOICE_ID_HI, get_elevenlabs_key, get_sarvam_key, run_cmd
 from .log import log
 from .retry import with_retry
 
@@ -122,6 +122,130 @@ def _generate_elevenlabs(
 
 
 # ─────────────────────────────────────────────────────
+# Sarvam AI — bulbul:v3, 45 Indian-language voices
+# ─────────────────────────────────────────────────────
+
+# Default Sarvam voice per language
+SARVAM_VOICES = {
+    "en": "ishita",   # young female, energetic
+    "hi": "ishita",
+    "bn": "ishita",
+    "gu": "ishita",
+    "kn": "ishita",
+    "ml": "ishita",
+    "mr": "ishita",
+    "od": "ishita",
+    "pa": "ishita",
+    "ta": "ishita",
+    "te": "ishita",
+}
+
+# Sarvam language code mapping (ISO 639-1 → BCP-47)
+SARVAM_LANG_CODES = {
+    "en": "en-IN", "hi": "hi-IN", "bn": "bn-IN",
+    "gu": "gu-IN", "kn": "kn-IN", "ml": "ml-IN",
+    "mr": "mr-IN", "od": "od-IN", "pa": "pa-IN",
+    "ta": "ta-IN", "te": "te-IN",
+}
+
+_SARVAM_MAX_CHARS = 2500
+
+
+def _chunk_text(text: str, max_chars: int = _SARVAM_MAX_CHARS) -> list[str]:
+    """Split text into chunks at sentence boundaries, staying under max_chars."""
+    import re
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    chunks, current = [], ""
+    for sentence in sentences:
+        if len(current) + len(sentence) + 1 <= max_chars:
+            current = f"{current} {sentence}".strip()
+        else:
+            if current:
+                chunks.append(current)
+            # Single sentence longer than limit — hard split
+            while len(sentence) > max_chars:
+                chunks.append(sentence[:max_chars])
+                sentence = sentence[max_chars:]
+            current = sentence
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+@with_retry(max_retries=3, base_delay=2.0)
+def _call_sarvam(text: str, lang_code: str, speaker: str, api_key: str,
+                 pace: float = 1.15, temperature: float = 0.7) -> bytes:
+    """Call Sarvam AI TTS API and return raw WAV bytes."""
+    import base64
+    r = requests.post(
+        "https://api.sarvam.ai/text-to-speech",
+        headers={
+            "api-subscription-key": api_key,
+            "Content-Type": "application/json",
+        },
+        json={
+            "text": text,
+            "target_language_code": lang_code,
+            "model": "bulbul:v3",
+            "speaker": speaker,
+            "pace": pace,
+            "temperature": temperature,
+            "speech_sample_rate": 24000,
+        },
+        timeout=60,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Sarvam AI TTS {r.status_code}: {r.text[:200]}")
+    audio_b64 = r.json()["audios"][0]
+    return base64.b64decode(audio_b64)
+
+
+def _generate_sarvam(
+    script: str, out_dir: Path, lang: str,
+    speaker: str = "", pace: float = 1.15, temperature: float = 0.7,
+) -> Path:
+    """Generate voiceover via Sarvam AI bulbul:v3 (young female voice by default)."""
+    api_key = get_sarvam_key()
+    if not api_key:
+        raise RuntimeError("SARVAM_API_KEY not set")
+
+    lang2 = lang[:2].lower()
+    lang_code = SARVAM_LANG_CODES.get(lang2, "en-IN")
+    voice = speaker or SARVAM_VOICES.get(lang2, "ishita")
+
+    log(f"Generating {lang} voiceover via Sarvam AI (speaker: {voice}, pace: {pace})...")
+
+    chunks = _chunk_text(script)
+    wav_paths: list[Path] = []
+
+    for i, chunk in enumerate(chunks):
+        wav_bytes = _call_sarvam(chunk, lang_code, voice, api_key, pace, temperature)
+        chunk_path = out_dir / f"sarvam_chunk_{i}.wav"
+        chunk_path.write_bytes(wav_bytes)
+        wav_paths.append(chunk_path)
+
+    out_path = out_dir / f"voiceover_{lang}.wav"
+
+    if len(wav_paths) == 1:
+        wav_paths[0].rename(out_path)
+    else:
+        # Concatenate WAV chunks with ffmpeg
+        concat_list = out_dir / "sarvam_concat.txt"
+        concat_list.write_text("\n".join(f"file '{p.name}'" for p in wav_paths))
+        run_cmd([
+            "ffmpeg", "-f", "concat", "-safe", "0",
+            "-i", str(concat_list), "-c", "copy",
+            str(out_path), "-y", "-loglevel", "quiet",
+        ])
+        for p in wav_paths:
+            p.unlink(missing_ok=True)
+        concat_list.unlink(missing_ok=True)
+
+    log(f"Sarvam AI voiceover saved: {out_path.name}")
+    return out_path
+
+
+# ─────────────────────────────────────────────────────
 # macOS say — last resort fallback
 # ─────────────────────────────────────────────────────
 
@@ -166,15 +290,19 @@ def get_tts_provider(name: str | None = None) -> str:
     if from_cfg:
         return from_cfg
 
-    # Auto-detect: Edge TTS first (free, cross-platform)
+    # Auto-detect: paid API keys take priority over free defaults
+    if get_sarvam_key():
+        return "sarvam"
+
+    if get_elevenlabs_key():
+        return "elevenlabs"
+
+    # Edge TTS free fallback (cross-platform)
     try:
         import edge_tts  # noqa: F401
         return "edge"
     except ImportError:
         pass
-
-    if get_elevenlabs_key():
-        return "elevenlabs"
 
     # macOS say as last resort
     import shutil
@@ -184,6 +312,7 @@ def get_tts_provider(name: str | None = None) -> str:
     raise RuntimeError(
         "No TTS provider available. Install one:\n"
         "  pip install edge-tts  (free, recommended)\n"
+        "  Set SARVAM_API_KEY (Indian-language voices)\n"
         "  Set ELEVENLABS_API_KEY (premium)\n"
         "  Or use macOS (has built-in 'say')"
     )
@@ -225,6 +354,19 @@ def generate_voiceover(
             else:
                 log("Falling back to macOS say...")
                 return _generate_say(script, out_dir)
+
+    if provider == "sarvam":
+        try:
+            return _generate_sarvam(
+                script, out_dir, lang,
+                speaker=voice_config.get("voice_id", ""),
+                pace=voice_config.get("pace", 1.15),
+                temperature=voice_config.get("temperature", 0.7),
+            )
+        except Exception as e:
+            log(f"Sarvam AI TTS failed: {e}")
+            log("Falling back to Edge TTS...")
+            return _generate_edge_tts(script, out_dir, lang)
 
     if provider == "elevenlabs":
         try:

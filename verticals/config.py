@@ -232,6 +232,10 @@ def get_gemini_key() -> str:
     return _get_key("GEMINI_API_KEY")
 
 
+def get_sarvam_key() -> str:
+    return _get_key("SARVAM_API_KEY")
+
+
 def get_youtube_token_path() -> Path:
     token_path = SKILL_DIR / "youtube_token.json"
     if token_path.exists():
