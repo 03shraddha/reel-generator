@@ -151,3 +151,9 @@ or build your own by dropping a yaml file in `niches/`. see `niches/tech.yaml` f
 ---
 
 mit license
+
+---
+
+## credits
+
+inspired by [youtube-shorts-pipeline](https://github.com/rushindrasinha/youtube-shorts-pipeline) by [@rushindrasinha](https://github.com/rushindrasinha).
