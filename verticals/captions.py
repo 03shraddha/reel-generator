@@ -37,7 +37,7 @@ def _whisper_word_timestamps(audio_path: Path, lang: str = "en", script: str = "
         return []
 
     log("Running Whisper for word-level timestamps...")
-    model = whisper.load_model("base")
+    model = whisper.load_model("small")
     transcribe_kwargs = {
         "language": lang[:2],
         "word_timestamps": True,
@@ -45,20 +45,114 @@ def _whisper_word_timestamps(audio_path: Path, lang: str = "en", script: str = "
     # Providing the script as initial_prompt significantly reduces transcription
     # errors on synthesized (TTS) audio — Whisper stays anchored to the right words.
     if script:
-        transcribe_kwargs["initial_prompt"] = script[:224]  # Whisper prompt limit ~224 tokens
+        transcribe_kwargs["initial_prompt"] = script[:900]  # ~224 tokens ≈ 900 English chars
     result = model.transcribe(str(audio_path), **transcribe_kwargs)
 
-    words = []
+    whisper_words = []
     for segment in result.get("segments", []):
         for w in segment.get("words", []):
-            words.append({
+            whisper_words.append({
                 "word": w["word"].strip(),
                 "start": w["start"],
                 "end": w["end"],
             })
 
-    log(f"Got {len(words)} word timestamps.")
-    return words
+    log(f"Got {len(whisper_words)} word timestamps.")
+
+    if script and whisper_words:
+        whisper_words = _align_script_words(script.split(), whisper_words)
+
+    return whisper_words
+
+
+def _align_script_words(script_words: list[str], whisper_words: list[dict]) -> list[dict]:
+    """Align script words to Whisper timestamps using sequence matching.
+
+    Matches script words to Whisper words with difflib, then interpolates
+    timestamps for words Whisper missed. Result uses script spelling (no
+    typos) with Whisper timing (accurate sync).
+    """
+    from difflib import SequenceMatcher
+
+    def _norm(w: str) -> str:
+        return w.lower().strip(".,!?;:'\"()-")
+
+    s_norm = [_norm(w) for w in script_words]
+    w_norm = [_norm(w["word"]) for w in whisper_words]
+
+    matcher = SequenceMatcher(None, s_norm, w_norm, autojunk=False)
+
+    # Map: script_idx -> whisper timestamp
+    script_to_ts: dict[int, dict] = {}
+    for s_start, w_start, length in matcher.get_matching_blocks():
+        for offset in range(length):
+            script_to_ts[s_start + offset] = whisper_words[w_start + offset]
+
+    # Build result with None placeholders for unmatched words
+    result: list[dict] = []
+    for i, word in enumerate(script_words):
+        if i in script_to_ts:
+            ts = script_to_ts[i]
+            result.append({"word": word, "start": ts["start"], "end": ts["end"]})
+        else:
+            result.append({"word": word, "start": None, "end": None})
+
+    # Interpolate timestamps for words Whisper missed
+    total_duration = whisper_words[-1]["end"] if whisper_words else 0.0
+    _interpolate_missing(result, total_duration)
+
+    log(f"Aligned {len(script_words)} script words: {len(script_to_ts)} matched, "
+        f"{len(script_words) - len(script_to_ts)} interpolated.")
+    return result
+
+
+def _interpolate_missing(words: list[dict], total_duration: float) -> None:
+    """Fill None timestamps by linear interpolation between known anchors."""
+    n = len(words)
+    anchors = [(i, w["start"], w["end"]) for i, w in enumerate(words) if w["start"] is not None]
+
+    if not anchors:
+        per = total_duration / max(n, 1)
+        for i, w in enumerate(words):
+            w["start"] = i * per
+            w["end"] = (i + 1) * per
+        return
+
+    i = 0
+    while i < n:
+        if words[i]["start"] is not None:
+            i += 1
+            continue
+
+        # Find the gap extent
+        gap_end = i
+        while gap_end + 1 < n and words[gap_end + 1]["start"] is None:
+            gap_end += 1
+
+        prev = next((a for a in reversed(anchors) if a[0] < i), None)
+        nxt = next((a for a in anchors if a[0] > gap_end), None)
+
+        # Use surrounding words' full span (start→end) so missed words
+        # always get non-zero duration even when adjacent whisper words abut.
+        t_start = prev[1] if prev else 0.0   # start of prev matched word
+        t_end = nxt[2] if nxt else total_duration  # end of next matched word
+        count = gap_end - i + 1 + 2  # +2 accounts for the anchor words sharing the span
+        t_start = prev[2] if prev else 0.0   # revert to end of prev (gives missed words their own slice after prev)
+        t_end = nxt[1] if nxt else total_duration
+        # If gap is zero-width, steal a small slice proportional to word count
+        if t_end <= t_start:
+            slice_width = 0.1 * (gap_end - i + 1)
+            t_start = max(0.0, t_start - slice_width / 2)
+            t_end = t_start + slice_width
+        count = gap_end - i + 1
+        per = (t_end - t_start) / max(count, 1)
+
+        for j in range(i, gap_end + 1):
+            offset = j - i
+            words[j]["start"] = t_start + offset * per
+            words[j]["end"] = t_start + (offset + 1) * per
+
+        i = gap_end + 1
 
 
 def _group_words(words: list[dict], group_size: int = 4) -> list[list[dict]]:

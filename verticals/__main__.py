@@ -55,12 +55,13 @@ def cmd_produce(args):
     from .music import select_and_prepare_music
     from .assemble import assemble_video
     from .niche import load_niche, get_voice_config, get_caption_config, get_music_config
+    from .tts import get_tts_provider
     from .state import PipelineState
     import json
     import shutil
 
     draft_path = Path(args.draft)
-    draft = json.loads(draft_path.read_text())
+    draft = json.loads(draft_path.read_text(encoding="utf-8"))
     job_id = draft["job_id"]
     lang = args.lang
     state = PipelineState(draft)
@@ -91,14 +92,21 @@ def cmd_produce(args):
 
     # Voiceover (niche-aware voice selection)
     if force or not state.is_done("voiceover"):
+        # Resolve the actual provider first so get_voice_config fetches the
+        # correct voice IDs (e.g. don't pass an Edge TTS voice name to Sarvam).
+        resolved_provider = get_tts_provider(tts_provider)
+        # Map provider name to the key used in niche YAML suggested_voices
+        _provider_yaml_key = {"sarvam": "sarvam", "elevenlabs": "elevenlabs"}.get(
+            resolved_provider, "edge_tts"
+        )
         voice_config = get_voice_config(
             profile,
-            provider=tts_provider or "edge_tts",
+            provider=_provider_yaml_key,
             lang=lang,
         )
         vo_path = generate_voiceover(
             script, work_dir, lang,
-            provider=tts_provider,
+            provider=resolved_provider,
             voice_config=voice_config,
         )
         state.complete_stage("voiceover", {"path": str(vo_path)})
@@ -184,7 +192,7 @@ def cmd_upload(args):
     import json
 
     draft_path = Path(args.draft)
-    draft = json.loads(draft_path.read_text())
+    draft = json.loads(draft_path.read_text(encoding="utf-8"))
     lang = args.lang
     state = PipelineState(draft)
     force = getattr(args, "force", False)

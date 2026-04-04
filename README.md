@@ -1,9 +1,11 @@
-# reel-generator
+# automated youtube shorts video generator
 
-an ai pipeline that turns a headline into a published youtube short in ~3 minutes.
+give it a topic. it writes the script, generates images, records the voiceover, syncs captions, and produces a ready-to-upload short — automatically.
+
+topic discovery can also run on autopilot: the pipeline can scrape reddit, news feeds, and trending sources to find topics without any input from you.
 
 ```
-python -m verticals run --topic "artemis ii crew just launched to the moon" --niche science
+python -m verticals run --news "artemis ii crew just launched to the moon" --niche science
 ```
 
 that one command does everything below, automatically.
