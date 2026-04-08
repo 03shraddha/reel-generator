@@ -132,6 +132,12 @@ or build your own by dropping a yaml file in `niches/`. see `niches/tech.yaml` f
 
 ---
 
+## credits
+
+inspired by [youtube-shorts-pipeline](https://github.com/rushindrasinha/youtube-shorts-pipeline) by [@rushindrasinha](https://github.com/rushindrasinha).
+
+---
+
 ## cost per video
 
 | setup | cost |
@@ -154,6 +160,34 @@ mit license
 
 ---
 
-## credits
+## Interview Reference
 
-inspired by [youtube-shorts-pipeline](https://github.com/rushindrasinha/youtube-shorts-pipeline) by [@rushindrasinha](https://github.com/rushindrasinha).
+### Overview
+
+Reel Generator is a command-line pipeline that produces YouTube Shorts end-to-end from a single topic string. It orchestrates eight sequential stages: web research (DuckDuckGo), LLM script writing, AI image generation, TTS voiceover, Whisper caption sync, background music selection, FFmpeg assembly, and YouTube upload. Every stage has a provider fallback chain — Claude → Gemini → OpenAI → Ollama for LLM; Sarvam → ElevenLabs → Edge TTS for voice; GPT-image-1 → Gemini Imagen → solid color for images — so the same codebase operates from $0.00 (Gemini free tier + Edge TTS) to ~$0.06 per video (Claude + GPT images). Niche profiles defined in YAML files parameterize tone, visual style, music mood, and script pacing per content category without code changes.
+
+---
+
+### Narrative
+
+The project originated as a **Claude Code skill** — a structured prompt that invoked existing tools rather than a standalone application. Repackaging it as an importable Python module (`python -m verticals`) was the first architectural decision: it created a clean entry point, separated configuration from execution, and made the pipeline testable as a unit.
+
+Before that repackaging could advance, two independent security audits surfaced seven vulnerabilities: a TOCTOU race condition in file handling, unsanitized inputs passed to subprocess calls, and missing dependency version pins. Both audits arrived as pull requests within the same development window, before v2 features were added. The effect was structural — fixing the vulnerabilities required breaking the monolithic script into discrete, auditable modules. V2's modular architecture was partly a feature choice and partly a consequence of making the v1 code defensible.
+
+V2 was a full rewrite. The additions — captions, background music, topic sourcing, thumbnails, and a draft-resume system — transformed a single-use script into a resumable pipeline. The draft-resume capability reflects a specific operational insight: an eight-stage pipeline that accumulates 2–4 minutes of API latency can fail at any stage, and restarting from scratch is expensive. Checkpointing each completed stage locally converts a catastrophic failure into a recoverable one.
+
+V3 introduced the **niche intelligence engine**: YAML-configurable profiles that parameterize every content-specific variable. The decision to externalise these into configuration rather than branching logic in code means adding a new niche (e.g., a regional news profile for Hindi content) requires a YAML file, not a code change. This design choice surfaced a post-hoc bug: the `pace` field in niche YAMLs was documented as a float but the system accepted descriptive strings ("moderate, approximately 150 words per minute") — the coercion was added after the fact when the Sarvam API rejected non-numeric pace values.
+
+Sarvam AI TTS was added in v3 specifically for Indian-language content using `bulbul:v3` with the `ishita` voice. A subsequent commit corrected a voice mismatch where the niche YAML referenced one speaker name and the Sarvam client was initialized with another — the integration worked in isolation but had not been tested through the full niche-profile code path before merge.
+
+---
+
+### Technical Reflection
+
+**Constraints encountered.** The eight-stage sequential pipeline accumulates API latency at each step — image generation alone can take 30–60 seconds per frame, and a typical Short requires 4–6 images. The Sarvam `bulbul:v3` speaker name set is fixed; using a name valid in v2 (or an unsupported string) fails at runtime without a descriptive error. YAML niche profiles lack schema validation, so malformed fields produce runtime errors rather than load-time warnings.
+
+**Resolution patterns.** The provider fallback hierarchy is the central resilience mechanism: each stage degrades gracefully through alternatives rather than failing hard when a primary provider is unavailable or rate-limited. Draft checkpointing converts pipeline failures from restart-from-zero events into resume-from-stage events. The `--dry-run` flag (script generation only) allows content iteration without incurring image or video production costs — useful for validating niche profiles before committing to full pipeline execution.
+
+**Failure points under scale.** The YouTube upload step assumes valid OAuth credentials, sufficient API quota, and a private-by-default upload target — three independent failure surfaces that are not retried or surfaced clearly when they fail mid-pipeline after all prior stages have completed successfully. Whisper's caption timestamp accuracy degrades on non-English content; as `--lang hi` and other Indian language flags are used more widely, caption sync errors will become more frequent. The DuckDuckGo research stage scrapes a public interface rather than an official API — it has no rate limit handling and will fail silently if the search page structure changes.
+
+**Long-term maintenance considerations.** Each provider in the fallback chains has independent API versioning, pricing, and deprecation timelines. The `gpt-image-1` endpoint name and the `bulbul:v3` speaker list are both subject to change without the pipeline having a validation step that would surface breakage before a user encounters it at runtime. As the niche YAML library grows, schema drift between profiles (inconsistent field names, missing required keys) will produce inconsistent outputs that are difficult to diagnose without a schema validator at load time.
