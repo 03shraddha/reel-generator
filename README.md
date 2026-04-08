@@ -164,30 +164,94 @@ mit license
 
 ### Overview
 
-Reel Generator is a command-line pipeline that produces YouTube Shorts end-to-end from a single topic string. It orchestrates eight sequential stages: web research (DuckDuckGo), LLM script writing, AI image generation, TTS voiceover, Whisper caption sync, background music selection, FFmpeg assembly, and YouTube upload. Every stage has a provider fallback chain — Claude → Gemini → OpenAI → Ollama for LLM; Sarvam → ElevenLabs → Edge TTS for voice; GPT-image-1 → Gemini Imagen → solid color for images — so the same codebase operates from $0.00 (Gemini free tier + Edge TTS) to ~$0.06 per video (Claude + GPT images). Niche profiles defined in YAML files parameterize tone, visual style, music mood, and script pacing per content category without code changes.
+Reel Generator is a CLI pipeline that produces a complete YouTube Short from a single topic string — research, script, images, voiceover, captions, music, assembly, and upload, fully automated.
+
+**Pipeline at a glance:**
+
+| Stage | What happens | Primary provider |
+|-------|-------------|-----------------|
+| Research | Searches DuckDuckGo for real facts | DuckDuckGo scrape |
+| Script | LLM writes a 60–90s hook-driven voiceover script | Claude → Gemini → OpenAI → Ollama |
+| B-roll | Generates AI images per scene | GPT-image-1 → Gemini Imagen → solid color |
+| Voiceover | Converts script to speech | Sarvam → ElevenLabs → Edge TTS → say |
+| Captions | Whisper produces word-level timestamps; subtitles burned in | OpenAI Whisper |
+| Music | Mood-matched background track, auto-ducked under voice | Local tracks |
+| Assembly | FFmpeg combines everything with Ken Burns effects | FFmpeg |
+| Upload | Posts to YouTube (private by default) | YouTube Data API v3 |
+
+Every stage has a **fallback chain** — the same codebase runs from $0.00 (Gemini free tier + Edge TTS) to ~$0.06/video (Claude + GPT images) depending on which keys are configured.
+
+**Niche profiles** (YAML files) parameterize tone, visual style, music mood, and script pacing per content category — no code changes needed to add a new content type.
 
 ---
 
 ### Narrative
 
-The project originated as a **Claude Code skill** — a structured prompt that invoked existing tools rather than a standalone application. Repackaging it as an importable Python module (`python -m verticals`) was the first architectural decision: it created a clean entry point, separated configuration from execution, and made the pipeline testable as a unit.
+**Where it started — a Claude Code skill**
+- v1 was a structured prompt (a "skill") that invoked existing tools — not a standalone application
+- The first real architectural decision was repackaging it as `python -m verticals`: a proper CLI entry point that separated config from execution and made the pipeline testable
 
-Before that repackaging could advance, two independent security audits surfaced seven vulnerabilities: a TOCTOU race condition in file handling, unsanitized inputs passed to subprocess calls, and missing dependency version pins. Both audits arrived as pull requests within the same development window, before v2 features were added. The effect was structural — fixing the vulnerabilities required breaking the monolithic script into discrete, auditable modules. V2's modular architecture was partly a feature choice and partly a consequence of making the v1 code defensible.
+**Security audits forced the modular architecture**
+- Before v2 features were added, two independent security audits arrived as PRs in the same development window
+- Seven vulnerabilities found: a TOCTOU race condition in file handling, unsanitized inputs to subprocess calls, missing dependency version pins
+- Fixing these required breaking the monolithic v1 script into discrete, auditable modules
+- V2's modular design was partly intentional and partly forced — the security fixes made it structurally necessary
 
-V2 was a full rewrite. The additions — captions, background music, topic sourcing, thumbnails, and a draft-resume system — transformed a single-use script into a resumable pipeline. The draft-resume capability reflects a specific operational insight: an eight-stage pipeline that accumulates 2–4 minutes of API latency can fail at any stage, and restarting from scratch is expensive. Checkpointing each completed stage locally converts a catastrophic failure into a recoverable one.
+**V2: from single-use script to resumable pipeline**
+- Full rewrite with captions, background music, topic sourcing, thumbnails, and **draft-resume**
+- Draft-resume was the key operational insight:
+  - An 8-stage pipeline accumulates 2–4 minutes of API calls
+  - If stage 7 fails, restarting from stage 1 is expensive and wasteful
+  - Fix: checkpoint each completed stage to disk; resume picks up exactly where it failed
 
-V3 introduced the **niche intelligence engine**: YAML-configurable profiles that parameterize every content-specific variable. The decision to externalise these into configuration rather than branching logic in code means adding a new niche (e.g., a regional news profile for Hindi content) requires a YAML file, not a code change. This design choice surfaced a post-hoc bug: the `pace` field in niche YAMLs was documented as a float but the system accepted descriptive strings ("moderate, approximately 150 words per minute") — the coercion was added after the fact when the Sarvam API rejected non-numeric pace values.
+**V3: niche intelligence engine**
+- Instead of hardcoding content style per niche in code, V3 moved everything into YAML config files
+- Adding a new niche (e.g., Hindi regional news) = drop a YAML file in `niches/`, no code change
+- This surfaced a bug immediately:
+  - The `pace` field in niche YAMLs was documented as a float (`1.15`)
+  - Some profiles were written with descriptive strings ("moderate, approximately 150 words per minute")
+  - The Sarvam TTS API rejected non-numeric pace values at runtime
+  - Fix: add explicit float coercion before the value reaches the API — applied after the fact
 
-Sarvam AI TTS was added in v3 specifically for Indian-language content using `bulbul:v3` with the `ishita` voice. A subsequent commit corrected a voice mismatch where the niche YAML referenced one speaker name and the Sarvam client was initialized with another — the integration worked in isolation but had not been tested through the full niche-profile code path before merge.
+**Sarvam TTS integration**
+- Added in v3 for Indian-language content: `bulbul:v3`, `ishita` voice
+- A voice mismatch bug appeared after merge:
+  - The niche YAML specified one speaker name
+  - The Sarvam client was initialized with a different default
+  - The integration was tested in isolation but not through the full niche-profile code path
+  - Required a follow-up fix commit to align the two
 
 ---
 
 ### Technical Reflection
 
-**Constraints encountered.** The eight-stage sequential pipeline accumulates API latency at each step — image generation alone can take 30–60 seconds per frame, and a typical Short requires 4–6 images. The Sarvam `bulbul:v3` speaker name set is fixed; using a name valid in v2 (or an unsupported string) fails at runtime without a descriptive error. YAML niche profiles lack schema validation, so malformed fields produce runtime errors rather than load-time warnings.
+**Constraints**
 
-**Resolution patterns.** The provider fallback hierarchy is the central resilience mechanism: each stage degrades gracefully through alternatives rather than failing hard when a primary provider is unavailable or rate-limited. Draft checkpointing converts pipeline failures from restart-from-zero events into resume-from-stage events. The `--dry-run` flag (script generation only) allows content iteration without incurring image or video production costs — useful for validating niche profiles before committing to full pipeline execution.
+| Constraint | What it means in practice |
+|-----------|--------------------------|
+| 8 sequential API stages | Total latency: 2–4 minutes per video; image gen alone is 30–60s per frame |
+| `bulbul:v3` speaker names are a fixed list | Invalid names fail at runtime with no descriptive error |
+| YAML profiles have no schema validation | Malformed fields (wrong type, missing keys) cause runtime errors, not load-time warnings |
+| DuckDuckGo research is a scrape, not an API | No rate limit handling; fails silently if the page structure changes |
+| YouTube upload is last in the chain | OAuth failures and quota errors surface only after all prior stages have succeeded |
 
-**Failure points under scale.** The YouTube upload step assumes valid OAuth credentials, sufficient API quota, and a private-by-default upload target — three independent failure surfaces that are not retried or surfaced clearly when they fail mid-pipeline after all prior stages have completed successfully. Whisper's caption timestamp accuracy degrades on non-English content; as `--lang hi` and other Indian language flags are used more widely, caption sync errors will become more frequent. The DuckDuckGo research stage scrapes a public interface rather than an official API — it has no rate limit handling and will fail silently if the search page structure changes.
+**How key problems were resolved**
 
-**Long-term maintenance considerations.** Each provider in the fallback chains has independent API versioning, pricing, and deprecation timelines. The `gpt-image-1` endpoint name and the `bulbul:v3` speaker list are both subject to change without the pipeline having a validation step that would surface breakage before a user encounters it at runtime. As the niche YAML library grows, schema drift between profiles (inconsistent field names, missing required keys) will produce inconsistent outputs that are difficult to diagnose without a schema validator at load time.
+| Problem | Solution |
+|---------|---------|
+| Pipeline failure requiring full restart | Checkpoint each stage to disk; `--resume` picks up from the last completed stage |
+| High cost for content iteration | `--dry-run` runs script generation only — validate the script before paying for images and video |
+| Provider unavailability / rate limits | Fallback chain at every stage — degrades gracefully rather than failing hard |
+| YAML `pace` field accepting wrong types | Explicit float coercion before the value reaches the Sarvam API |
+| Voice mismatch between YAML and client | Align niche YAML speaker name with the client initialization; test through the full code path |
+
+**What breaks at scale**
+- **Latency**: 8 sequential stages means no video is ready in under 2 minutes even with fast providers — there's no parallelism at the stage level
+- **Whisper caption sync**: accuracy degrades on non-English content; `--lang hi` and other Indian language flags will produce caption timing errors at scale
+- **YouTube OAuth**: credentials expire and quota refreshes daily — silent failures at the upload stage after all compute has already been spent
+- **YAML schema drift**: as the niche library grows, profiles written at different times will have inconsistent fields, producing subtly different outputs with no error to diagnose
+
+**Maintenance risks**
+- Each provider in each fallback chain has its own API versioning and deprecation timeline — `gpt-image-1`, `bulbul:v3` speaker names, Whisper model versions can all change independently
+- No schema validator runs at startup on YAML profiles — breakage only surfaces at the stage that reads the malformed field
+- The pipeline has no observability layer: if a stage produces subtly wrong output (bad image, off-pace audio), there's no automated check — the user only sees it in the final video
