@@ -1,8 +1,6 @@
-# automated youtube shorts video generator
+# This Script Makes Viral Shorts on Autopilot
 
-give it a topic. it writes the script, generates images, records the voiceover, syncs captions, and produces a ready-to-upload short — automatically.
-
-topic discovery can also run on autopilot: the pipeline can scrape reddit, news feeds, and trending sources to find topics without any input from you.
+fully autonomous pipeline → discovers topics → writes script → generates images → creates voiceover → captions with whisper → outputs ready-to-upload
 
 ```
 python -m verticals run --news "artemis ii crew just launched to the moon" --niche science
