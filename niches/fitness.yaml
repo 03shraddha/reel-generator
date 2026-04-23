@@ -5,7 +5,7 @@ script:
   tone: "motivational but grounded, actionable, no bro science"
   pacing: "energetic, direct, every sentence earns its place"
   perspective: "coach talking to client"
-  word_count: "140 to 160"
+  word_count: "80 to 90"
   hooks:
     - id: myth_bust
       template: "You've been doing {exercise} wrong your entire life. Here's the fix."

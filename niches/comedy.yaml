@@ -4,7 +4,7 @@ description: "Profile for comedy content."
 script:
   tone: "engaging, clear, conversational"
   pacing: "moderate"
-  word_count: "150 to 175"
+  word_count: "80 to 90"
   hooks:
     - id: breaking
       template: "This just happened in the world of comedy."

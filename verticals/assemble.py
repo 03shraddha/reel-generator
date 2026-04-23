@@ -67,11 +67,10 @@ def assemble_video(
     log("Assembling video...")
     duration = get_audio_duration(voiceover)
 
-    # Cut every 2 seconds — cycle through available frames to fill the full duration
-    per_clip = 2.0
-    n_clips = max(len(frames), round(duration / per_clip))
-    clip_sequence = [frames[i % len(frames)] for i in range(n_clips)]
-    clip_dur = duration / n_clips  # actual duration per clip
+    # Use exactly the provided frames — 6 clips that divide the voiceover evenly
+    n_clips = len(frames)
+    clip_sequence = list(frames)
+    clip_dur = duration / n_clips
     effects = ["zoom_in", "pan_right", "zoom_out"]
 
     # Animate each clip — fal.ai clips (.mp4) are trimmed/resized; images get Ken Burns

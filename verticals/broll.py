@@ -11,21 +11,17 @@ from .config import VIDEO_WIDTH, VIDEO_HEIGHT, run_cmd, get_fal_key
 from .log import log
 from .retry import with_retry
 
-# Prepended to every b-roll prompt so the model produces real-looking photography
+# Prepended to every b-roll prompt so the model produces casual iPhone-style footage
 _HYPERREALISTIC_PREFIX = (
-    "Ultra-hyperrealistic professional photograph. "
-    "Shot on a Sony A7R V with an 85mm f/1.8 prime lens, ISO 400, natural ambient lighting. "
-    "Must be completely indistinguishable from a real photograph — "
-    "not AI-generated, not illustrated, not CGI, not digitally rendered. "
-    "Photojournalistic quality: authentic textures, genuine depth of field, "
-    "real-world lighting conditions, natural imperfections. Subject: "
+    "Casual candid iPhone video still frame. "
+    "Shot handheld on an iPhone, slightly imperfect framing, natural ambient light. "
+    "Real-world setting, authentic and unposed — feels like footage that could go viral on social media. "
+    "Not studio-lit, not polished, not AI-looking. Genuine textures, real depth. Subject: "
 )
 
-# Model cascade: gpt-image-2 first (best quality), fall back to gpt-image-1
-# size is the portrait dimension string for each model
+# Use gpt-image-1 directly (native 9:16 portrait support)
 _MODEL_CASCADE = [
-    ("gpt-image-2", "1024x1792"),  # native 9:16 for gpt-image-2
-    ("gpt-image-1", "1024x1536"),  # approximate 9:16 for gpt-image-1
+    ("gpt-image-1", "1024x1536"),
 ]
 
 # HTTP status codes that mean the model isn't accessible yet — triggers fallback
@@ -63,29 +59,10 @@ def _call_images_api(prompt: str, output_path: Path, api_key: str, model: str, s
 
 
 def _generate_image_openai(prompt: str, output_path: Path, api_key: str):
-    """Try gpt-image-2, fall back to gpt-image-1 if model isn't accessible yet."""
+    """Generate an image using gpt-image-1."""
     full_prompt = _HYPERREALISTIC_PREFIX + prompt
-    last_error = None
-
-    for model, size in _MODEL_CASCADE:
-        try:
-            _call_images_api(full_prompt, output_path, api_key, model, size)
-            if model != _MODEL_CASCADE[0][0]:
-                log(f"Used fallback model {model}")
-            return
-        except RuntimeError as e:
-            err = str(e)
-            # Only fall through to next model on access/availability errors
-            status_code = int(err[1:4]) if err.startswith("[") and err[4] == "]" else 0
-            if status_code in _FALLBACK_STATUSES or any(
-                kw in err.lower() for kw in ("not found", "does not exist", "no access", "permission")
-            ):
-                log(f"{model} not accessible yet ({err[:80]}) — trying fallback")
-                last_error = e
-                continue
-            raise  # real error (bad prompt, auth failure, etc.) — don't mask it
-
-    raise RuntimeError(f"All image models failed. Last error: {last_error}")
+    model, size = _MODEL_CASCADE[0]
+    _call_images_api(full_prompt, output_path, api_key, model, size)
 
 
 def _get_openai_key() -> str:
@@ -144,10 +121,10 @@ def _generate_broll_fal(prompt: str, out_path: Path):
 
 
 def generate_broll(prompts: list, out_dir: Path) -> list[Path]:
-    """Generate up to 10 b-roll frames/clips.
+    """Generate up to 6 b-roll video clips (or static image fallbacks).
 
     Uses fal.ai Kling 1.6 (real video) when FAL_KEY is set; falls back to
-    GPT-image-2 static images + Ken Burns if fal.ai is unavailable or fails.
+    gpt-image-1 static images + Ken Burns if fal.ai is unavailable or fails.
     """
     fal_key = get_fal_key()
     openai_key = _get_openai_key()
@@ -156,7 +133,7 @@ def generate_broll(prompts: list, out_dir: Path) -> list[Path]:
 
     frames = []
 
-    for i, prompt in enumerate(prompts[:10]):
+    for i, prompt in enumerate(prompts[:6]):
         # Try fal.ai first (real video clip)
         if fal_key:
             clip_path = out_dir / f"broll_{i}.mp4"
@@ -165,23 +142,23 @@ def generate_broll(prompts: list, out_dir: Path) -> list[Path]:
                 frames.append(clip_path)
                 continue
             except Exception as e:
-                log(f"fal.ai clip {i+1} failed: {e} — falling back to OpenAI image")
+                log(f"fal.ai clip {i+1} failed: {e} — falling back to gpt-image-1")
 
         # Fall back to OpenAI static image
         out_path = out_dir / f"broll_{i}.png"
-        log(f"Generating b-roll frame {i+1}/{len(prompts[:10])} via gpt-image-2...")
+        log(f"Generating b-roll frame {i+1}/{len(prompts[:6])} via gpt-image-1...")
         try:
             _generate_image_openai(prompt, out_path, openai_key)
             _resize_to_portrait(out_path)
             frames.append(out_path)
         except Exception as e:
-            log(f"gpt-image-2 frame {i+1} failed: {e} — using solid-colour fallback")
+            log(f"gpt-image-1 frame {i+1} failed: {e} — using solid-colour fallback")
             frames.append(_fallback_frame(i, out_dir))
 
-    # Pad to minimum 10 entries (solid-colour fallback images)
-    while len(frames) < 10:
+    # Pad to minimum 6 entries (solid-colour fallback images)
+    while len(frames) < 6:
         idx = len(frames)
-        log(f"Padding to meet 10-image minimum: adding fallback frame {idx+1}")
+        log(f"Padding to meet 6-clip minimum: adding fallback frame {idx+1}")
         frames.append(_fallback_frame(idx, out_dir))
 
     return frames

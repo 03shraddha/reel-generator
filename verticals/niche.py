@@ -68,7 +68,7 @@ def _minimal_profile(name: str) -> dict:
         "script": {
             "tone": "clear, engaging, conversational",
             "pacing": "moderate, well structured",
-            "word_count": "150 to 180",
+            "word_count": "80 to 90",
         },
         "visuals": {
             "style": "cinematic, professional",

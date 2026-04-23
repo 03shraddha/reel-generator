@@ -5,7 +5,7 @@ script:
   tone: "suspenseful, measured, respectful of victims, gripping storytelling"
   pacing: "slow build, deliberate pauses, tension escalation"
   perspective: "narrator guiding the audience through evidence"
-  word_count: "155 to 175"
+  word_count: "80 to 90"
   hooks:
     - id: mystery
       template: "In {year}, {person} vanished without a trace. {timeframe} later, a discovery changed everything."

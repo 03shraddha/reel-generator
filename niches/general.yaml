@@ -6,7 +6,7 @@ script:
   tone: "clear, engaging, conversational, curious"
   pacing: "moderate, well structured, easy to follow"
   perspective: "first person, talking to a friend"
-  word_count: "150 to 180"
+  word_count: "80 to 90"
   sentence_style: "mix of short and medium sentences"
   hooks:
     - id: breaking_news

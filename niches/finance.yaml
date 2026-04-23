@@ -5,7 +5,7 @@ script:
   tone: "clear, data driven, authoritative but accessible, never preachy"
   pacing: "measured, let numbers breathe, build to conclusion"
   perspective: "first person, informed observer sharing analysis"
-  word_count: "140 to 165"
+  word_count: "80 to 90"
   hooks:
     - id: statistic_shock
       template: "{shocking_stat}. And most people have no idea what this means for their money."

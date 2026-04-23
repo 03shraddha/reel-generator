@@ -9,7 +9,7 @@ script:
   tone: "informed, slightly opinionated, conversational but never condescending"
   pacing: "fast and dense with facts, no filler words, no throat clearing"
   perspective: "first person, talking directly to viewer as a peer"
-  word_count: "150 to 170"
+  word_count: "80 to 90"
   sentence_style: "short punchy sentences, occasional longer one for rhythm, never more than two clauses"
 
   hooks:

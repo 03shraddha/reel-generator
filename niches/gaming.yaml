@@ -6,7 +6,7 @@ script:
   tone: "energetic, opinionated, community insider, knows the references"
   pacing: "fast and punchy, meme aware, gen z friendly without trying too hard"
   perspective: "first person, fellow gamer talking to gamers"
-  word_count: "140 to 165"
+  word_count: "80 to 90"
   sentence_style: "very short sentences, fragments okay for emphasis, rhetorical questions work"
 
   hooks:

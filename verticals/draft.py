@@ -91,7 +91,7 @@ def generate_draft(
 
     channel_note = f"\nChannel context: {channel_context}" if channel_context else ""
 
-    prompt = f"""You are writing a {platform_label} script ({max_words} words max, ~60-90 seconds spoken).{channel_note}
+    prompt = f"""You are writing a {platform_label} script ({max_words} words max, ~30 seconds spoken).{channel_note}
 
 {script_context}
 
@@ -116,27 +116,30 @@ RULES:
   only if it's a proper noun everyone recognises — otherwise spell it out). Spell out
   all numbers, dates, and mission-specific terms in full so a text-to-speech engine
   reads them correctly. Avoid special characters, hyphens used as dashes, and symbols.
-- B-ROLL MATCHING: Generate exactly 10 b-roll image prompts. Each prompt should visually
-  match a distinct segment of the script in order (opening, hook payoff, fact 1, fact 2,
-  fact 3, fact 4, fact 5, fact 6, emotional peak, closing/CTA). The images change every
-  ~2 seconds so make each prompt specific and vivid.
+- B-ROLL MATCHING: Generate exactly 6 b-roll video prompts. Each prompt should visually
+  match a distinct segment of the script in order (hook, fact 1, fact 2, fact 3,
+  emotional peak, closing/CTA). Each clip is ~5 seconds so make each prompt specific,
+  action-oriented, and visually punchy. Every prompt must feel like a casual candid
+  iPhone video clip — handheld, natural light, real-world setting, slightly imperfect.
+  Not polished or studio-lit. Think social-media-native footage that could go viral.
 - REAL PHOTOS: For any b-roll prompt featuring a real person (astronaut, scientist,
   official, athlete, etc.), include their full name as the first words of the prompt
   (e.g., "Reid Wiseman NASA astronaut portrait", "Christina Koch spacewalk ISS").
   This enables Wikimedia Commons to find actual photos of that person.
 - NO REPEAT SUBJECTS: Every b-roll prompt must describe a visually distinct subject.
-  Never use the same person, location, or object twice across the 10 prompts.
+  Never use the same person, location, or object twice across the 6 prompts.
 
 - CONTENT DENSITY: Every sentence must deliver a concrete fact, statistic, or insight.
   No filler phrases ("In today's video", "Let me explain", "As we can see"). Pack maximum
-  information into minimum words. Aim for at least 3 verifiable facts per 30 seconds.
-- LANGUAGE: Use simple, direct language. Maximum 12 words per sentence. Write at a
-  grade-8 reading level. The viewer should learn something new every 5 seconds.
+  information into minimum words. You are talking to an expert, not a beginner — skip
+  the basics, assume prior knowledge, go straight to what's surprising or counterintuitive.
+- LANGUAGE: Short punchy sentences. Maximum 10 words per sentence. Zero fluff.
+  The viewer should be surprised or learn something new every 5 seconds.
 
 Output JSON exactly:
 {{
   "script": "...",
-  "broll_prompts": ["prompt 1", "prompt 2", "prompt 3", "prompt 4", "prompt 5", "prompt 6", "prompt 7", "prompt 8", "prompt 9", "prompt 10"],
+  "broll_prompts": ["prompt 1", "prompt 2", "prompt 3", "prompt 4", "prompt 5", "prompt 6"],
   "youtube_title": "...",
   "youtube_description": "...",
   "youtube_tags": "tag1,tag2,tag3",
@@ -173,9 +176,9 @@ Output JSON exactly:
             draft[field] = str(draft[field])
     if "broll_prompts" in draft:
         if not isinstance(draft["broll_prompts"], list):
-            draft["broll_prompts"] = ["Cinematic landscape"] * 10
+            draft["broll_prompts"] = ["Cinematic landscape"] * 6
         else:
-            draft["broll_prompts"] = [str(p) for p in draft["broll_prompts"][:10]]
+            draft["broll_prompts"] = [str(p) for p in draft["broll_prompts"][:6]]
 
     # Append visual prompt suffix to b-roll prompts
     suffix = get_visual_prompt_suffix(profile)

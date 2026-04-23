@@ -5,7 +5,7 @@ script:
   tone: "aspirational, vivid, storytelling, makes you want to book a flight"
   pacing: "flowing, descriptive but efficient"
   perspective: "fellow traveler sharing a discovery"
-  word_count: "140 to 165"
+  word_count: "80 to 90"
   hooks:
     - id: hidden_gem
       template: "Nobody talks about this place. And that's exactly why you need to go."
