@@ -185,57 +185,10 @@ def cmd_produce(args):
     return video_path
 
 
-def cmd_upload(args):
-    from .upload import upload_to_youtube
-    from .thumbnail import generate_thumbnail
-    from .state import PipelineState
-    import json
-
-    draft_path = Path(args.draft)
-    draft = json.loads(draft_path.read_text(encoding="utf-8"))
-    lang = args.lang
-    state = PipelineState(draft)
-    force = getattr(args, "force", False)
-
-    video_path = Path(draft.get(f"video_{lang}", ""))
-    srt_path_str = draft.get(f"srt_{lang}")
-    srt_path = Path(srt_path_str) if srt_path_str else None
-
-    if not video_path.exists():
-        print(f"  No produced video found for lang={lang}. Run produce first.")
-        sys.exit(1)
-
-    # Thumbnail
-    thumb_path = None
-    if force or not state.is_done("thumbnail"):
-        try:
-            thumb_path = generate_thumbnail(draft, MEDIA_DIR)
-            state.complete_stage("thumbnail", {"path": str(thumb_path)})
-        except Exception as e:
-            log(f"Thumbnail generation failed: {e} — uploading without thumbnail")
-    else:
-        thumb_p = state.get_artifact("thumbnail", "path", "")
-        if thumb_p and Path(thumb_p).exists():
-            thumb_path = Path(thumb_p)
-
-    # Upload
-    if force or not state.is_done("upload"):
-        url = upload_to_youtube(video_path, draft, srt_path, lang, thumb_path)
-        state.complete_stage("upload", {"url": url})
-    else:
-        url = state.get_artifact("upload", "url", "")
-        log(f"Skipping upload (already done): {url}")
-
-    draft[f"youtube_url_{lang}"] = url
-    state.save(draft_path)
-    print(f"\n  Live: {url}")
-    return url
-
-
 def cmd_run(args):
     draft_path = cmd_draft(args)
     if args.dry_run:
-        print("  Dry run — skipping produce + upload")
+        print("  Dry run — skipping produce")
         return
 
     # Confirmation gate: show draft and ask before spending money on video
@@ -244,7 +197,7 @@ def cmd_run(args):
     print(f"\n  Title   : {draft.get('youtube_title', '')}")
     print(f"\n  Script  :\n{draft.get('script', '')}\n")
     try:
-        confirm = input("  Looks good? Press Enter to produce + upload, or Ctrl+C to cancel: ").strip()
+        input("  Looks good? Press Enter to produce, or Ctrl+C to cancel: ").strip()
     except KeyboardInterrupt:
         print("\n  Cancelled.")
         return
@@ -257,14 +210,7 @@ def cmd_run(args):
         voice = getattr(args, "voice", None)
 
     video_path = cmd_produce(ProduceArgs())
-
-    class UploadArgs:
-        draft = str(draft_path)
-        lang = args.lang
-        force = False
-
-    url = cmd_upload(UploadArgs())
-    print(f"\n  Done! {url}")
+    print(f"\n  Done! Video saved to: {video_path}")
 
 
 def cmd_topics(args):
@@ -336,14 +282,8 @@ def main():
     p_produce.add_argument("--script", default=None, help="Override script text")
     p_produce.add_argument("--force", action="store_true", help="Redo all stages")
 
-    # upload
-    p_upload = sub.add_parser("upload", help="Upload to YouTube")
-    p_upload.add_argument("--draft", required=True)
-    p_upload.add_argument("--lang", default="en", choices=["en", "hi", "es", "pt", "de", "fr", "ja", "ko"])
-    p_upload.add_argument("--force", action="store_true", help="Re-upload even if done")
-
     # run (full pipeline)
-    p_run = sub.add_parser("run", help="Full pipeline: draft -> produce -> upload")
+    p_run = sub.add_parser("run", help="Full pipeline: draft -> produce")
     p_run.add_argument("--news", required=False, help="Topic/news headline")
     p_run.add_argument("--niche", default="general", help=niche_help)
     p_run.add_argument("--platform", default="shorts", choices=["shorts", "reels", "tiktok", "all"])
@@ -415,8 +355,6 @@ def main():
         cmd_draft(args)
     elif args.cmd == "produce":
         cmd_produce(args)
-    elif args.cmd == "upload":
-        cmd_upload(args)
     elif args.cmd == "run":
         cmd_run(args)
     elif args.cmd == "topics":
