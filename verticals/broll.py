@@ -1,4 +1,4 @@
-"""B-roll image generation (gpt-image-1 exclusive) + Ken Burns animation."""
+"""B-roll image generation (gpt-image-2 exclusive) + Ken Burns animation."""
 
 import base64
 import os
@@ -11,14 +11,23 @@ from .config import VIDEO_WIDTH, VIDEO_HEIGHT, run_cmd
 from .log import log
 from .retry import with_retry
 
+_IMAGE_MODEL = "gpt-image-2"
 
-# ─────────────────────────────────────────────────────
-# OpenAI gpt-image-1 — primary provider when key available
-# ─────────────────────────────────────────────────────
+# Prepended to every b-roll prompt so the model produces real-looking photography
+_HYPERREALISTIC_PREFIX = (
+    "Ultra-hyperrealistic professional photograph. "
+    "Shot on a Sony A7R V with an 85mm f/1.8 prime lens, ISO 400, natural ambient lighting. "
+    "Must be completely indistinguishable from a real photograph — "
+    "not AI-generated, not illustrated, not CGI, not digitally rendered. "
+    "Photojournalistic quality: authentic textures, genuine depth of field, "
+    "real-world lighting conditions, natural imperfections. Subject: "
+)
+
 
 @with_retry(max_retries=3, base_delay=2.0)
 def _generate_image_openai(prompt: str, output_path: Path, api_key: str):
-    """Generate image via OpenAI gpt-image-1 (portrait 1024x1536)."""
+    """Generate image via OpenAI gpt-image-2 (portrait 1024x1536)."""
+    full_prompt = _HYPERREALISTIC_PREFIX + prompt
     r = requests.post(
         "https://api.openai.com/v1/images/generations",
         headers={
@@ -26,11 +35,11 @@ def _generate_image_openai(prompt: str, output_path: Path, api_key: str):
             "Content-Type": "application/json",
         },
         json={
-            "model": "gpt-image-1",
-            "prompt": prompt,
-            "size": "1024x1536",   # portrait — closest to 9:16
+            "model": _IMAGE_MODEL,
+            "prompt": full_prompt,
+            "size": "1024x1792",   # native 9:16 portrait
             "n": 1,
-            "quality": "medium",   # balance cost vs quality
+            "quality": "high",
         },
         timeout=120,
         verify=True,
@@ -87,7 +96,7 @@ def _resize_to_portrait(img_path: Path):
 
 
 def generate_broll(prompts: list, out_dir: Path) -> list[Path]:
-    """Generate up to 10 b-roll frames via gpt-image-1, solid-colour fallback if API fails."""
+    """Generate up to 10 b-roll frames via gpt-image-2, solid-colour fallback if API fails."""
     openai_key = _get_openai_key()
     if not openai_key:
         raise RuntimeError("OPENAI_API_KEY is required for image generation. Add it to .env")

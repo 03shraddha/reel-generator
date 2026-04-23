@@ -1,4 +1,4 @@
-"""Thumbnail generation — gpt-image-1 (16:9) + Pillow text overlay."""
+"""Thumbnail generation — gpt-image-2 (16:9) + Pillow text overlay."""
 
 import base64
 import os
@@ -11,6 +11,15 @@ from .config import load_config
 from .log import log
 from .retry import with_retry
 
+_IMAGE_MODEL = "gpt-image-2"
+
+_HYPERREALISTIC_PREFIX = (
+    "Ultra-hyperrealistic professional photograph, 16:9 landscape YouTube thumbnail. "
+    "Shot on a Sony A7R V, natural cinematic lighting. "
+    "Must look like a real photograph — not AI-generated, not illustrated, not CGI. "
+    "Photojournalistic quality with authentic textures and genuine depth of field. Subject: "
+)
+
 
 def _get_openai_key() -> str:
     return os.environ.get("OPENAI_API_KEY") or load_config().get("OPENAI_API_KEY", "")
@@ -21,16 +30,17 @@ THUMB_HEIGHT = 720
 
 @with_retry(max_retries=3, base_delay=2.0)
 def _generate_thumb_image_openai(prompt: str, output_path: Path, api_key: str):
-    """Generate a 16:9 thumbnail via OpenAI gpt-image-1 (landscape 1536x1024)."""
+    """Generate a 16:9 thumbnail via OpenAI gpt-image-2 (landscape 1536x1024)."""
+    full_prompt = _HYPERREALISTIC_PREFIX + prompt
     r = requests.post(
         "https://api.openai.com/v1/images/generations",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         json={
-            "model": "gpt-image-1",
-            "prompt": f"16:9 landscape YouTube thumbnail: {prompt}",
+            "model": _IMAGE_MODEL,
+            "prompt": full_prompt,
             "n": 1,
-            "size": "1536x1024",  # closest landscape option for gpt-image-1
-            "quality": "medium",
+            "size": "1792x1024",  # native 16:9 landscape for thumbnails
+            "quality": "high",
         },
         timeout=120,
     )
