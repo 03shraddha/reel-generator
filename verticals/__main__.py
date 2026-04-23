@@ -370,22 +370,30 @@ def main():
     if args.cmd in ("draft", "run") and getattr(args, "discover", False):
         from .topics import TopicEngine
         niche = getattr(args, "niche", "general") or "general"
+        print(f"\n  Searching the web for trending {niche} topics...\n")
         engine = TopicEngine(niche=niche)
-        candidates = engine.discover(limit=15)
+        candidates = engine.discover(limit=20)
         if not candidates:
             print("  No trending topics found. Use --news instead.")
             sys.exit(1)
 
+        # Show top 5 to keep the picker clean and focused
+        top = candidates[:5]
+
         if getattr(args, "auto_pick", False):
-            args.news = engine.auto_pick(candidates)
+            args.news = engine.auto_pick(top)
             print(f"  Auto-picked: {args.news}")
         else:
-            print("\n  Trending topics:\n")
-            for i, t in enumerate(candidates, 1):
-                print(f"  {i:2d}. [{t.source}] {t.title}")
-            choice = input("\n  Pick a number (or enter custom topic): ").strip()
-            if choice.isdigit() and 1 <= int(choice) <= len(candidates):
-                args.news = candidates[int(choice) - 1].title
+            print("  Top 5 trending topics:\n")
+            for i, t in enumerate(top, 1):
+                score_str = f"  [{t.trending_score:.2f}]" if t.trending_score else ""
+                print(f"  {i}. [{t.source}]{score_str} {t.title}")
+                if t.summary:
+                    print(f"     {t.summary[:120].strip()}")
+                print()
+            choice = input("  Pick a number (or type your own topic): ").strip()
+            if choice.isdigit() and 1 <= int(choice) <= len(top):
+                args.news = top[int(choice) - 1].title
             else:
                 args.news = choice
     elif args.cmd in ("draft", "run") and not getattr(args, "news", None):

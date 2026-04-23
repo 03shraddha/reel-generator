@@ -64,5 +64,8 @@ thumbnail:
   accent_color: "#22D1EE"
   max_words: 4
 discovery:
+  exa:
+    query: "new scientific discovery physics biology chemistry space astronomy research breakthrough"
+    days_back: 7
   reddit:
     subreddits: ["science", "space", "EverythingScience", "Futurology"]

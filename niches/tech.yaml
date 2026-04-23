@@ -146,6 +146,9 @@ thumbnail:
 # Topic Discovery
 # ─────────────────────────────────────────────────────
 discovery:
+  exa:
+    query: "latest AI machine learning technology startup product launch news"
+    days_back: 7
   reddit:
     subreddits: ["technology", "artificial", "MachineLearning", "singularity", "programming", "startups"]
   rss:

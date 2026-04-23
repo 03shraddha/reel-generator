@@ -127,6 +127,10 @@ def get_newsapi_key() -> str:
     return _get_key("NEWSAPI_KEY")
 
 
+def get_exa_key() -> str:
+    return _get_key("EXA_API_KEY")
+
+
 # ─────────────────────────────────────────────────────
 # Niche → default topic source configuration
 # ─────────────────────────────────────────────────────
@@ -240,9 +244,6 @@ def get_elevenlabs_key() -> str:
     return _get_key("ELEVENLABS_API_KEY")
 
 
-def get_gemini_key() -> str:
-    return _get_key("GEMINI_API_KEY")
-
 
 def get_sarvam_key() -> str:
     return _get_key("SARVAM_API_KEY")
@@ -298,17 +299,17 @@ def run_setup():
     if key:
         config["ANTHROPIC_API_KEY"] = key
 
-    print("\n2. ElevenLabs API key (optional — fallback to macOS 'say' if omitted)")
-    print("   Pro account required for server use. https://elevenlabs.io/settings/api-keys")
+    print("\n2. OpenAI API key (required — used for script generation and image generation)")
+    print("   Get yours at: https://platform.openai.com/api-keys")
+    key = getpass.getpass("   OPENAI_API_KEY (input hidden): ").strip()
+    if key:
+        config["OPENAI_API_KEY"] = key
+
+    print("\n3. ElevenLabs API key (optional — for premium voice synthesis)")
+    print("   https://elevenlabs.io/settings/api-keys")
     key = getpass.getpass("   ELEVENLABS_API_KEY (press Enter to skip, input hidden): ").strip()
     if key:
         config["ELEVENLABS_API_KEY"] = key
-
-    print("\n3. Google Gemini API key (required — used for AI b-roll image generation)")
-    print("   Get yours at: https://aistudio.google.com/apikey")
-    key = getpass.getpass("   GEMINI_API_KEY (input hidden): ").strip()
-    if key:
-        config["GEMINI_API_KEY"] = key
 
     save_config(config)
     print(f"\n  Config saved to {CONFIG_FILE}")

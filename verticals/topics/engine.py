@@ -43,6 +43,12 @@ class TopicEngine:
             pass
 
         try:
+            from .exa import ExaSource
+            source_map["exa"] = ExaSource
+        except ImportError:
+            pass
+
+        try:
             from .twitter import TwitterSource
             source_map["twitter"] = TwitterSource
         except ImportError:
@@ -54,8 +60,24 @@ class TopicEngine:
         except ImportError:
             pass
 
+        # Load niche YAML discovery overrides (e.g. exa query, rss feeds)
+        niche_discovery: dict = {}
+        try:
+            from ..niche import load_niche
+            niche_profile = load_niche(self._niche)
+            niche_discovery = niche_profile.get("discovery", {})
+        except Exception:
+            pass
+
         for name, cls in source_map.items():
             src_cfg = dict(source_config.get(name, {}))  # shallow copy so we can mutate
+
+            # Merge niche YAML discovery config (YAML wins over engine defaults, user config.json wins over YAML)
+            if name in niche_discovery:
+                yaml_cfg = niche_discovery[name] or {}
+                merged = dict(yaml_cfg)
+                merged.update(src_cfg)  # user's config.json takes precedence
+                src_cfg = merged
 
             # Apply niche defaults when no explicit config is set by user
             if self._niche != "general":
@@ -63,11 +85,11 @@ class TopicEngine:
                     niche_subs = NICHE_TO_SUBREDDITS.get(self._niche, [])
                     if niche_subs:
                         src_cfg["subreddits"] = niche_subs
-                if name == "newsapi":
+                if name in ("newsapi", "exa"):
                     src_cfg.setdefault("niche", self._niche)
 
-            # NewsAPI enabled if key is present (checked by is_available); others default on/off
-            default_enabled = name in ("reddit", "rss", "google_trends", "newsapi")
+            # Exa and NewsAPI are enabled when their key is present (checked by is_available)
+            default_enabled = name in ("reddit", "rss", "google_trends", "newsapi", "exa")
             if src_cfg.get("enabled", default_enabled):
                 try:
                     self._sources.append(cls(src_cfg))
@@ -123,7 +145,7 @@ Reply with ONLY the topic title text, nothing else."""
         if backend == "api":
             client = get_anthropic_client()
             msg = client.messages.create(
-                model="claude-sonnet-4-6",
+                model="claude-opus-4-6",
                 max_tokens=200,
                 messages=[{"role": "user", "content": prompt}],
             )
