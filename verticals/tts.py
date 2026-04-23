@@ -11,7 +11,7 @@ from pathlib import Path
 
 import requests
 
-from .config import VOICE_ID_EN, VOICE_ID_HI, get_elevenlabs_key, get_sarvam_key, run_cmd
+from .config import VOICE_ID_EN, VOICE_ID_HI, get_cartesia_key, get_elevenlabs_key, get_sarvam_key, run_cmd
 from .log import log
 from .retry import with_retry
 
@@ -118,6 +118,58 @@ def _generate_elevenlabs(
     audio_bytes = _call_elevenlabs(script, vid, api_key, settings)
     out_path.write_bytes(audio_bytes)
     log(f"ElevenLabs voiceover saved: {out_path.name}")
+    return out_path
+
+
+# ─────────────────────────────────────────────────────
+# Cartesia Sonic-3 — fast English TTS (~$0.065/1000 chars)
+# ─────────────────────────────────────────────────────
+
+# Default Cartesia voice ID (Barbershop Man — natural male English)
+CARTESIA_DEFAULT_VOICE_ID = "a0e99841-438c-4a64-b679-ae501e7d6091"
+
+
+@with_retry(max_retries=3, base_delay=2.0)
+def _call_cartesia(script: str, voice_id: str, api_key: str, model_id: str = "sonic-english") -> bytes:
+    """Call Cartesia TTS API and return MP3 bytes."""
+    r = requests.post(
+        "https://api.cartesia.ai/tts/bytes",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Cartesia-Version": "2024-06-10",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model_id": model_id,
+            "transcript": script,
+            "voice": {"mode": "id", "id": voice_id},
+            "output_format": {"container": "mp3", "encoding": "mp3", "sample_rate": 44100},
+        },
+        timeout=60,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Cartesia {r.status_code}: {r.text[:200]}")
+    return r.content
+
+
+def _generate_cartesia(
+    script: str, out_dir: Path, lang: str, voice_id: str = "",
+) -> Path:
+    """Generate voiceover via Cartesia Sonic-3 (English only)."""
+    api_key = get_cartesia_key()
+    if not api_key:
+        raise RuntimeError("CARTESIA_API_KEY not set")
+
+    vid = voice_id or CARTESIA_DEFAULT_VOICE_ID
+    out_path = out_dir / f"voiceover_{lang}.mp3"
+
+    # Cartesia sonic-english is English-only; use multilingual model for other languages
+    model_id = "sonic-english" if lang[:2] == "en" else "sonic-multilingual"
+
+    log(f"Generating {lang} voiceover via Cartesia Sonic-3 (voice: {vid}, model: {model_id})...")
+    audio_bytes = _call_cartesia(script, vid, api_key, model_id)
+    out_path.write_bytes(audio_bytes)
+    log(f"Cartesia voiceover saved: {out_path.name}")
     return out_path
 
 
@@ -302,6 +354,9 @@ def get_tts_provider(name: str | None = None) -> str:
     if get_sarvam_key():
         return "sarvam"
 
+    if get_cartesia_key():
+        return "cartesia"
+
     if get_elevenlabs_key():
         return "elevenlabs"
 
@@ -373,6 +428,17 @@ def generate_voiceover(
             )
         except Exception as e:
             log(f"Sarvam AI TTS failed: {e}")
+            log("Falling back to Edge TTS...")
+            return _generate_edge_tts(script, out_dir, lang)
+
+    if provider == "cartesia":
+        try:
+            return _generate_cartesia(
+                script, out_dir, lang,
+                voice_id=voice_config.get("voice_id", ""),
+            )
+        except Exception as e:
+            log(f"Cartesia failed: {e}")
             log("Falling back to Edge TTS...")
             return _generate_edge_tts(script, out_dir, lang)
 

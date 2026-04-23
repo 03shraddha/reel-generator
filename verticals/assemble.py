@@ -39,7 +39,7 @@ def _ass_no_spaces(ass_path: Path, job_id: str) -> Path:
     return ass_path
 
 from .broll import animate_frame
-from .config import MEDIA_DIR, run_cmd
+from .config import MEDIA_DIR, VIDEO_WIDTH, VIDEO_HEIGHT, run_cmd
 from .log import log
 
 
@@ -74,11 +74,25 @@ def assemble_video(
     clip_dur = duration / n_clips  # actual duration per clip
     effects = ["zoom_in", "pan_right", "zoom_out"]
 
-    # Animate each clip with alternating Ken Burns effects
+    # Animate each clip — fal.ai clips (.mp4) are trimmed/resized; images get Ken Burns
     animated = []
     for i, frame in enumerate(clip_sequence):
         anim = out_dir / f"anim_{i}.mp4"
-        animate_frame(frame, anim, clip_dur + 0.1, effects[i % len(effects)])
+        if frame.suffix == ".mp4":
+            # fal.ai video clip: trim to clip_dur and letterbox/pad to 1080x1920
+            run_cmd([
+                "ffmpeg", "-i", str(frame),
+                "-t", str(clip_dur),
+                "-vf", (
+                    f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:"
+                    "force_original_aspect_ratio=decrease,"
+                    f"pad={VIDEO_WIDTH}:{VIDEO_HEIGHT}:(ow-iw)/2:(oh-ih)/2"
+                ),
+                "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p", "-an",
+                str(anim), "-y", "-loglevel", "quiet",
+            ])
+        else:
+            animate_frame(frame, anim, clip_dur + 0.1, effects[i % len(effects)])
         animated.append(anim)
 
     # Concat animated segments (escape single quotes for ffmpeg concat demuxer)

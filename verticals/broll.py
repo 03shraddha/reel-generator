@@ -1,4 +1,4 @@
-"""B-roll image generation (gpt-image-2, fallback to gpt-image-1) + Ken Burns animation."""
+"""B-roll generation: fal.ai Kling video (primary) or GPT image + Ken Burns (fallback)."""
 
 import base64
 import os
@@ -7,7 +7,7 @@ from pathlib import Path
 import requests
 from PIL import Image
 
-from .config import VIDEO_WIDTH, VIDEO_HEIGHT, run_cmd
+from .config import VIDEO_WIDTH, VIDEO_HEIGHT, run_cmd, get_fal_key
 from .log import log
 from .retry import with_retry
 
@@ -117,26 +117,68 @@ def _resize_to_portrait(img_path: Path):
     img.save(img_path)
 
 
+def _generate_broll_fal(prompt: str, out_path: Path):
+    """Generate a 5-second video clip via fal.ai Kling 1.6 (text-to-video, 9:16).
+
+    Downloads the resulting MP4 to out_path.
+    """
+    import fal_client  # pip install fal-client
+
+    # fal_client reads FAL_KEY from env; set it explicitly to use our config chain
+    os.environ.setdefault("FAL_KEY", get_fal_key())
+
+    log(f"Generating b-roll clip via fal.ai Kling 1.6: {prompt[:60]}...")
+    result = fal_client.subscribe(
+        "fal-ai/kling-video/v1.6/standard/text-to-video",
+        arguments={
+            "prompt": prompt,
+            "aspect_ratio": "9:16",
+            "duration": "5",
+        },
+    )
+    video_url = result["video"]["url"]
+    resp = requests.get(video_url, timeout=120, verify=True)
+    resp.raise_for_status()
+    out_path.write_bytes(resp.content)
+    log(f"fal.ai clip saved: {out_path.name}")
+
+
 def generate_broll(prompts: list, out_dir: Path) -> list[Path]:
-    """Generate up to 10 b-roll frames via gpt-image-2, solid-colour fallback if API fails."""
+    """Generate up to 10 b-roll frames/clips.
+
+    Uses fal.ai Kling 1.6 (real video) when FAL_KEY is set; falls back to
+    GPT-image-2 static images + Ken Burns if fal.ai is unavailable or fails.
+    """
+    fal_key = get_fal_key()
     openai_key = _get_openai_key()
-    if not openai_key:
-        raise RuntimeError("OPENAI_API_KEY is required for image generation. Add it to .env")
+    if not fal_key and not openai_key:
+        raise RuntimeError("Either FAL_KEY or OPENAI_API_KEY is required for b-roll generation. Add one to .env")
 
     frames = []
 
     for i, prompt in enumerate(prompts[:10]):
+        # Try fal.ai first (real video clip)
+        if fal_key:
+            clip_path = out_dir / f"broll_{i}.mp4"
+            try:
+                _generate_broll_fal(prompt, clip_path)
+                frames.append(clip_path)
+                continue
+            except Exception as e:
+                log(f"fal.ai clip {i+1} failed: {e} — falling back to OpenAI image")
+
+        # Fall back to OpenAI static image
         out_path = out_dir / f"broll_{i}.png"
-        log(f"Generating b-roll frame {i+1}/{len(prompts[:10])} via gpt-image-1...")
+        log(f"Generating b-roll frame {i+1}/{len(prompts[:10])} via gpt-image-2...")
         try:
             _generate_image_openai(prompt, out_path, openai_key)
             _resize_to_portrait(out_path)
             frames.append(out_path)
         except Exception as e:
-            log(f"gpt-image-1 frame {i+1} failed: {e} — using solid-colour fallback")
+            log(f"gpt-image-2 frame {i+1} failed: {e} — using solid-colour fallback")
             frames.append(_fallback_frame(i, out_dir))
 
-    # Validation: enforce minimum 10 frames (pad with fallback if needed)
+    # Pad to minimum 10 entries (solid-colour fallback images)
     while len(frames) < 10:
         idx = len(frames)
         log(f"Padding to meet 10-image minimum: adding fallback frame {idx+1}")

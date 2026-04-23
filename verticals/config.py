@@ -244,9 +244,20 @@ def get_elevenlabs_key() -> str:
     return _get_key("ELEVENLABS_API_KEY")
 
 
-
 def get_sarvam_key() -> str:
     return _get_key("SARVAM_API_KEY")
+
+
+def get_deepgram_key() -> str:
+    return _get_key("DEEPGRAM_API_KEY")
+
+
+def get_fal_key() -> str:
+    return _get_key("FAL_KEY")
+
+
+def get_cartesia_key() -> str:
+    return _get_key("CARTESIA_API_KEY")
 
 
 def get_youtube_token_path() -> Path:

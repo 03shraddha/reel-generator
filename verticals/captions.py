@@ -5,6 +5,42 @@ from pathlib import Path
 from .log import log
 
 
+def _deepgram_word_timestamps(audio_path: Path, lang: str = "en") -> list[dict]:
+    """Get word-level timestamps from Deepgram Nova-3 (cloud, ~1-3s vs Whisper's 10-60s)."""
+    from .config import get_deepgram_key
+    api_key = get_deepgram_key()
+
+    import requests
+
+    log("Running Deepgram Nova-3 for word-level timestamps...")
+    audio_bytes = audio_path.read_bytes()
+
+    # Detect MIME type from extension
+    ext = audio_path.suffix.lower()
+    mime = {"mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4"}.get(ext.lstrip("."), "audio/mpeg")
+
+    lang_code = lang[:2]
+    r = requests.post(
+        f"https://api.deepgram.com/v1/listen?model=nova-3&language={lang_code}&words=true&punctuate=true",
+        headers={"Authorization": f"Token {api_key}", "Content-Type": mime},
+        data=audio_bytes,
+        timeout=60,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Deepgram {r.status_code}: {r.text[:200]}")
+
+    words_raw = (
+        r.json()
+        .get("results", {})
+        .get("channels", [{}])[0]
+        .get("alternatives", [{}])[0]
+        .get("words", [])
+    )
+    words = [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in words_raw]
+    log(f"Deepgram returned {len(words)} word timestamps.")
+    return words
+
+
 def _has_ass_filter() -> bool:
     """Check if ffmpeg has libass (for ASS subtitle burn-in)."""
     import subprocess
@@ -19,17 +55,27 @@ def _has_ass_filter() -> bool:
 
 
 def _whisper_word_timestamps(audio_path: Path, lang: str = "en", script: str = "") -> list[dict]:
-    """Get word-level timestamps from Whisper.
+    """Get word-level timestamps from Deepgram (if key set) or local Whisper.
 
     Args:
         audio_path: Path to audio file.
         lang: Language code.
-        script: Original script text. When provided, passed to Whisper as
-                initial_prompt so it anchors transcription to the correct words
-                instead of mishearing synthesized speech.
+        script: Original script text. Passed to Whisper as initial_prompt to
+                improve transcription accuracy on synthesized speech.
+                Not needed for Deepgram (it handles TTS audio well natively).
 
     Returns list of {"word": str, "start": float, "end": float}.
     """
+    from .config import get_deepgram_key
+    if get_deepgram_key():
+        try:
+            words = _deepgram_word_timestamps(audio_path, lang)
+            if words and script:
+                words = _align_script_words(script.split(), words)
+            return words
+        except Exception as e:
+            log(f"Deepgram failed: {e} — falling back to Whisper")
+
     try:
         import whisper
     except ImportError:
