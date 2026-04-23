@@ -350,15 +350,15 @@ def get_tts_provider(name: str | None = None) -> str:
     if from_cfg:
         return from_cfg
 
-    # Auto-detect: paid API keys take priority over free defaults
+    # Auto-detect: ElevenLabs is the default premium voice when key is set
+    if get_elevenlabs_key():
+        return "elevenlabs"
+
     if get_sarvam_key():
         return "sarvam"
 
     if get_cartesia_key():
         return "cartesia"
-
-    if get_elevenlabs_key():
-        return "elevenlabs"
 
     # Edge TTS free fallback (cross-platform)
     try:

@@ -123,7 +123,7 @@ def _call_openai(prompt: str, max_tokens: int) -> str:
             "Content-Type": "application/json",
         },
         json={
-            "model": "gpt-4o",
+            "model": "gpt-4.1",
             "max_tokens": max_tokens,
             "temperature": 0.7,
             "messages": [{"role": "user", "content": prompt}],

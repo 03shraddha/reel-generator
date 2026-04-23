@@ -238,6 +238,17 @@ def cmd_run(args):
         print("  Dry run — skipping produce + upload")
         return
 
+    # Confirmation gate: show draft and ask before spending money on video
+    import json
+    draft = json.loads(draft_path.read_text(encoding="utf-8"))
+    print(f"\n  Title   : {draft.get('youtube_title', '')}")
+    print(f"\n  Script  :\n{draft.get('script', '')}\n")
+    try:
+        confirm = input("  Looks good? Press Enter to produce + upload, or Ctrl+C to cancel: ").strip()
+    except KeyboardInterrupt:
+        print("\n  Cancelled.")
+        return
+
     class ProduceArgs:
         draft = str(draft_path)
         lang = args.lang
