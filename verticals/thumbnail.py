@@ -1,4 +1,4 @@
-"""Thumbnail generation — gpt-image-2 (16:9) + Pillow text overlay."""
+"""Thumbnail generation — gpt-image-2, fallback to gpt-image-1 (16:9) + Pillow text overlay."""
 
 import base64
 import os
@@ -11,14 +11,20 @@ from .config import load_config
 from .log import log
 from .retry import with_retry
 
-_IMAGE_MODEL = "gpt-image-2"
-
 _HYPERREALISTIC_PREFIX = (
     "Ultra-hyperrealistic professional photograph, 16:9 landscape YouTube thumbnail. "
     "Shot on a Sony A7R V, natural cinematic lighting. "
     "Must look like a real photograph — not AI-generated, not illustrated, not CGI. "
     "Photojournalistic quality with authentic textures and genuine depth of field. Subject: "
 )
+
+# Model cascade: gpt-image-2 first, fall back to gpt-image-1
+_MODEL_CASCADE = [
+    ("gpt-image-2", "1792x1024"),  # native 16:9 for gpt-image-2
+    ("gpt-image-1", "1536x1024"),  # approximate 16:9 for gpt-image-1
+]
+
+_FALLBACK_STATUSES = {403, 404, 429}
 
 
 def _get_openai_key() -> str:
@@ -28,20 +34,13 @@ THUMB_WIDTH = 1280
 THUMB_HEIGHT = 720
 
 
-@with_retry(max_retries=3, base_delay=2.0)
-def _generate_thumb_image_openai(prompt: str, output_path: Path, api_key: str):
-    """Generate a 16:9 thumbnail via OpenAI gpt-image-2 (landscape 1536x1024)."""
-    full_prompt = _HYPERREALISTIC_PREFIX + prompt
+@with_retry(max_retries=2, base_delay=2.0)
+def _call_thumb_api(prompt: str, output_path: Path, api_key: str, model: str, size: str):
+    """Single attempt to generate a thumbnail with a specific model/size."""
     r = requests.post(
         "https://api.openai.com/v1/images/generations",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "model": _IMAGE_MODEL,
-            "prompt": full_prompt,
-            "n": 1,
-            "size": "1792x1024",  # native 16:9 landscape for thumbnails
-            "quality": "high",
-        },
+        json={"model": model, "prompt": prompt, "n": 1, "size": size, "quality": "high"},
         timeout=120,
     )
     if r.status_code != 200:
@@ -49,14 +48,38 @@ def _generate_thumb_image_openai(prompt: str, output_path: Path, api_key: str):
             detail = r.json().get("error", {}).get("message", r.text[:200])
         except Exception:
             detail = r.text[:200]
-        raise RuntimeError(f"OpenAI API {r.status_code}: {detail}")
+        raise RuntimeError(f"[{r.status_code}] {detail}")
 
     data = r.json()
     img_b64 = (data.get("data") or [{}])[0].get("b64_json")
-    if img_b64:
-        output_path.write_bytes(base64.b64decode(img_b64))
-        return
-    raise RuntimeError("No image data in OpenAI response")
+    if not img_b64:
+        raise RuntimeError("No image data in response")
+    output_path.write_bytes(base64.b64decode(img_b64))
+
+
+def _generate_thumb_image_openai(prompt: str, output_path: Path, api_key: str):
+    """Try gpt-image-2, fall back to gpt-image-1 if model isn't accessible yet."""
+    full_prompt = _HYPERREALISTIC_PREFIX + prompt
+    last_error = None
+
+    for model, size in _MODEL_CASCADE:
+        try:
+            _call_thumb_api(full_prompt, output_path, api_key, model, size)
+            if model != _MODEL_CASCADE[0][0]:
+                log(f"Used fallback model {model}")
+            return
+        except RuntimeError as e:
+            err = str(e)
+            status_code = int(err[1:4]) if err.startswith("[") and err[4] == "]" else 0
+            if status_code in _FALLBACK_STATUSES or any(
+                kw in err.lower() for kw in ("not found", "does not exist", "no access", "permission")
+            ):
+                log(f"{model} not accessible yet ({err[:80]}) — trying fallback")
+                last_error = e
+                continue
+            raise
+
+    raise RuntimeError(f"All image models failed. Last error: {last_error}")
 
 
 def _overlay_title(image_path: Path, title: str, output_path: Path):

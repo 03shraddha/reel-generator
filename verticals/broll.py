@@ -1,4 +1,4 @@
-"""B-roll image generation (gpt-image-2 exclusive) + Ken Burns animation."""
+"""B-roll image generation (gpt-image-2, fallback to gpt-image-1) + Ken Burns animation."""
 
 import base64
 import os
@@ -11,8 +11,6 @@ from .config import VIDEO_WIDTH, VIDEO_HEIGHT, run_cmd
 from .log import log
 from .retry import with_retry
 
-_IMAGE_MODEL = "gpt-image-2"
-
 # Prepended to every b-roll prompt so the model produces real-looking photography
 _HYPERREALISTIC_PREFIX = (
     "Ultra-hyperrealistic professional photograph. "
@@ -23,24 +21,24 @@ _HYPERREALISTIC_PREFIX = (
     "real-world lighting conditions, natural imperfections. Subject: "
 )
 
+# Model cascade: gpt-image-2 first (best quality), fall back to gpt-image-1
+# size is the portrait dimension string for each model
+_MODEL_CASCADE = [
+    ("gpt-image-2", "1024x1792"),  # native 9:16 for gpt-image-2
+    ("gpt-image-1", "1024x1536"),  # approximate 9:16 for gpt-image-1
+]
 
-@with_retry(max_retries=3, base_delay=2.0)
-def _generate_image_openai(prompt: str, output_path: Path, api_key: str):
-    """Generate image via OpenAI gpt-image-2 (portrait 1024x1536)."""
-    full_prompt = _HYPERREALISTIC_PREFIX + prompt
+# HTTP status codes that mean the model isn't accessible yet — triggers fallback
+_FALLBACK_STATUSES = {403, 404, 429}
+
+
+@with_retry(max_retries=2, base_delay=2.0)
+def _call_images_api(prompt: str, output_path: Path, api_key: str, model: str, size: str):
+    """Single attempt to generate an image with a specific model/size."""
     r = requests.post(
         "https://api.openai.com/v1/images/generations",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": _IMAGE_MODEL,
-            "prompt": full_prompt,
-            "size": "1024x1792",   # native 9:16 portrait
-            "n": 1,
-            "quality": "high",
-        },
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"model": model, "prompt": prompt, "size": size, "n": 1, "quality": "high"},
         timeout=120,
         verify=True,
     )
@@ -49,21 +47,45 @@ def _generate_image_openai(prompt: str, output_path: Path, api_key: str):
             detail = r.json().get("error", {}).get("message", r.text[:300])
         except Exception:
             detail = r.text[:300]
-        raise RuntimeError(f"OpenAI Images API {r.status_code}: {detail}")
+        raise RuntimeError(f"[{r.status_code}] {detail}")
 
     data = r.json()
-    # gpt-image-1 returns base64 by default (no response_format needed)
     img_b64 = data["data"][0].get("b64_json") or data["data"][0].get("url")
     if not img_b64:
-        raise RuntimeError("No image data in OpenAI response")
+        raise RuntimeError("No image data in response")
 
     if data["data"][0].get("b64_json"):
         output_path.write_bytes(base64.b64decode(img_b64))
     else:
-        # URL fallback — download it
         img_r = requests.get(img_b64, timeout=60, verify=True)
         img_r.raise_for_status()
         output_path.write_bytes(img_r.content)
+
+
+def _generate_image_openai(prompt: str, output_path: Path, api_key: str):
+    """Try gpt-image-2, fall back to gpt-image-1 if model isn't accessible yet."""
+    full_prompt = _HYPERREALISTIC_PREFIX + prompt
+    last_error = None
+
+    for model, size in _MODEL_CASCADE:
+        try:
+            _call_images_api(full_prompt, output_path, api_key, model, size)
+            if model != _MODEL_CASCADE[0][0]:
+                log(f"Used fallback model {model}")
+            return
+        except RuntimeError as e:
+            err = str(e)
+            # Only fall through to next model on access/availability errors
+            status_code = int(err[1:4]) if err.startswith("[") and err[4] == "]" else 0
+            if status_code in _FALLBACK_STATUSES or any(
+                kw in err.lower() for kw in ("not found", "does not exist", "no access", "permission")
+            ):
+                log(f"{model} not accessible yet ({err[:80]}) — trying fallback")
+                last_error = e
+                continue
+            raise  # real error (bad prompt, auth failure, etc.) — don't mask it
+
+    raise RuntimeError(f"All image models failed. Last error: {last_error}")
 
 
 def _get_openai_key() -> str:
