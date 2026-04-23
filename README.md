@@ -130,21 +130,6 @@ To create a custom niche, drop a `.yaml` file in the `niches/` folder. See `nich
 
 ---
 
-## CLI Flags
-
-| Flag | What It Does |
-|------|-------------|
-| `--news "headline"` | Topic or news headline to make a video about |
-| `--niche NAME` | Content niche (default: general) |
-| `--provider NAME` | LLM for script: claude, gemini, openai, ollama |
-| `--voice NAME` | TTS engine: sarvam, elevenlabs, edge, say |
-| `--lang CODE` | Language: en, hi, es, pt, de, fr, ja, ko |
-| `--dry-run` | Write the script only, skip video production |
-| `--force` | Redo all stages even if already done |
-| `--discover` | Auto-search for trending topics instead of giving one |
-| `--auto-pick` | Let the LLM pick the best trending topic for you |
-
----
 
 ## Trending Topics (Auto-Discovery)
 
