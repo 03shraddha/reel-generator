@@ -12,12 +12,12 @@ That's it. The pipeline does everything else automatically.
 
 ## What It Does
 
-| Stage | What Happens | Who Does It |
-|-------|-------------|-------------|
-| Script | LLM writes a 60-90s hook-driven voiceover script | Claude / OpenAI / Gemini / Ollama |
-| B-roll | Generates AI images for each scene | GPT-Image-2 -> GPT-Image-1 -> solid color |
-| Voiceover | Converts script to speech | Sarvam -> ElevenLabs -> Edge TTS -> say |
-| Captions | Whisper burns animated subtitles into video | OpenAI Whisper |
+| Stage | What Happens | Who Does It (in order of priority) |
+|-------|-------------|-------------------------------------|
+| Script | LLM writes a 60-90s hook-driven voiceover script | Claude -> OpenAI -> Gemini -> Ollama |
+| B-roll | Generates real video clips or AI images per scene | fal.ai Kling 1.6 (video) -> GPT-Image-2 -> solid color |
+| Voiceover | Converts script to speech | Sarvam -> ElevenLabs -> Cartesia -> Edge TTS -> say |
+| Captions | Word-level timestamps, animated subtitles burned in | Deepgram Nova-3 -> OpenAI Whisper |
 | Music | Picks a mood-matched track and auto-ducks under voice | Local tracks |
 | Assembly | FFmpeg combines everything with Ken Burns zoom/pan effects | FFmpeg |
 | Upload | Posts to YouTube (private by default) | YouTube Data API v3 |
@@ -76,10 +76,13 @@ python -m verticals upload --draft ~/.verticals/drafts/<id>.json
 
 | Key | Used For | Free Tier |
 |-----|---------|-----------|
-| `OPENAI_API_KEY` | Images (GPT-Image-2) + script + Whisper captions | No - around $0.04/video |
+| `OPENAI_API_KEY` | Script (GPT-4o) + images (GPT-Image-2) + captions (Whisper) | No - around $0.04/video |
 | `ANTHROPIC_API_KEY` | Better quality scripts via Claude | No - around $0.02/video |
+| `FAL_KEY` | Real video b-roll via fal.ai Kling 1.6 (text-to-video) | No - around $0.05/video |
 | `ELEVENLABS_API_KEY` | Premium human-sounding voice | Optional |
 | `SARVAM_API_KEY` | Indian language voices (Hindi etc.) | Free tier available |
+| `DEEPGRAM_API_KEY` | Fast cloud captions via Deepgram Nova-3 (replaces local Whisper) | Free tier available |
+| `CARTESIA_API_KEY` | Cartesia voice synthesis | Optional |
 | `EXA_API_KEY` | Web search for trending topics | Free tier available |
 
 **Run it for free** using Gemini + Edge TTS (no images but zero cost):
