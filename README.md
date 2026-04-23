@@ -104,31 +104,6 @@ python -m verticals run --news "your topic" --niche general --provider gemini --
 
 ---
 
-## Niche Profiles
-
-Niches shape the tone, visuals, music, and script pacing for every video. Pick one or build your own.
-
-| Niche | Best For |
-|-------|---------|
-| `tech` | Product launches, AI news, startup stories |
-| `finance` | Markets, crypto, personal finance tips |
-| `science` | Space, biology, discovery news |
-| `fitness` | Workout tips, health studies |
-| `gaming` | Game releases, esports |
-| `true_crime` | Crime stories, investigations |
-| `politics` | Policy news, elections |
-| `motivation` | Quotes, mindset, success stories |
-| `travel` | Destination highlights, tips |
-| `general` | Anything else |
-
-```bash
-# See all available niches
-python -m verticals niches
-```
-
-To create a custom niche, drop a `.yaml` file in the `niches/` folder. See `niches/tech.yaml` for the format.
-
----
 
 
 ## Trending Topics (Auto-Discovery)
